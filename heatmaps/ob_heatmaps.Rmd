@@ -2,7 +2,9 @@
 title: "OBmap heatmaps"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: html_document
+output: 
+  html_document: 
+    keep_md: true
 ---
 # Goal:
 Heatmaps of OR gene expression across single dimension positions annotated with features, examination of gene covariance and calculation of glomerulus symmetry

@@ -2,7 +2,9 @@
 title: "OBmap single cell style analysis"
 author: "kanazian"
 date: "Sep 24, 2020"
-output: html_document
+output: 
+  html_document: 
+    keep_md: true
 ---
 # Goal: 
 Perform scRNAseq cluster DiffE style analysis on replicates of single dimension OBmap data to examine gene differential expression between positional clusters and dimensional reduction for positional samples. Following: https://bioconductor.org/packages/release/bioc/vignettes/SC3/inst/doc/SC3.html#de-genes
