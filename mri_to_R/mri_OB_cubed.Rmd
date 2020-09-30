@@ -2,9 +2,8 @@
 title: "MRI OB model in cubegrid"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: 
-  html_document: 
-    keep_md: true
+output: github_document
+always_allow_html: true
 ---
 # Goal: Import 3D data file for 1. an array of cubes and 2. a mouse brain
 Determine which cubes contain OB surface
