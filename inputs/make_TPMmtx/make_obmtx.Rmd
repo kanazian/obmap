@@ -1,0 +1,143 @@
+---
+title: "Merge OBmap inputs"
+author: "kanazian"
+date: "Sep 23, 2020"
+output: html_document
+---
+
+# Goal
+Given gencodeV25, STAR aligned, RSEM quantified OBmap readset, output tpm tables of ORs and all intact (OR+TAAR+VMNR) chemosensory genes
+```{r setup, message=FALSE, warning=F}
+library(tidyverse) #hail hadley
+```
+
+
+# Make a merged file from all inputs
+```{r, message=F, warning=F}
+#prep loading of all files in dir
+filedir <- "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/in_model/"
+myfiles <- list.files(path = filedir, pattern = "*.genes.results", full.names = T)
+
+#prep sample names
+rawnames <- list.files(path = "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/in_model/", pattern = "*.genes.results")
+splitnames <- str_split(rawnames, ".genes")
+
+keynames <- vector(mode = "character", length = length(rawnames)+1)
+for (i in 1:length(rawnames)) {
+  keynames[1] <- "ens_raw"
+  keynames[i+1] <- splitnames[[i]][1]
+}
+
+#setup to make merge files
+sample_file <- read_tsv(myfiles[1])
+
+mergetpm <- matrix(ncol = nrow(sample_file), nrow = length(myfiles) + 1)
+for (i in 1:length(myfiles)) {
+  if (i == 1) {
+    genes <- read_tsv(myfiles[i]) %>% select(gene_id) %>% as_vector()
+    mergetpm[i,] <- genes
+    mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
+  } else {
+    mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
+  }
+}
+
+preptpm <- as_tibble(mergetpm) %>% t() %>% as_tibble()
+colnames(preptpm) <- keynames
+
+enstrans <- read_csv("~/Desktop/obmap/r_analysis/inputs/convert_ensID_geneName.csv") %>%
+  select(ens_id, gene_name) %>%
+  unique()
+
+renamed <- preptpm %>%
+  rowwise() %>%
+  mutate(ens_id = str_split(ens_raw, "[.]")[[1]][1]) %>%
+  ungroup() %>%
+  left_join(enstrans, by = "ens_id") %>%
+  select(gene_name, everything()) %>%
+  unique()
+
+write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_allgenes_200817.csv")
+```
+
+
+# intermediate outputs
+```{r, message=F, warning=F}
+olfronly <- renamed %>%
+  filter(str_detect(gene_name, "Olfr"))
+write_csv(olfronly, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_allolfrs_200817.csv")
+
+intactonly <- olfronly %>%
+  filter(!str_detect(gene_name, "ps"))
+write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intactolfrs_200817.csv")
+
+taaronly <- renamed %>%
+  filter(str_detect(gene_name, "Taar")) %>%
+  filter(!str_detect(gene_name, "ps"))
+write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intacttaars_200817.csv")
+
+vmnonly <- renamed %>%
+  filter(str_detect(gene_name, "Vmn")) %>%
+  filter(!str_detect(gene_name, "ps"))
+write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intactvmn_200817.csv")
+
+chemo <- bind_rows(intactonly, taaronly, vmnonly)
+write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intactchemo_200817.csv")
+```
+
+
+#make genes_over_samples files ready for model input
+```{r}
+old_covars <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactolfrs_over_samples_200923.csv") %>%
+  select(name:dimrep)
+
+new_file_divide <- old_covars %>% 
+  mutate(X1 = str_replace(name, "[.]", "S")) %>%
+  select(X1, everything(), -name)
+
+
+intactflip <- intactonly %>% select(-ens_raw, -ens_id) %>% t()
+intactnames <- intactflip[1,]
+colnames(intactflip) <- intactnames
+intactflip <- intactflip[2:nrow(intactflip),]
+
+chemoflip <- chemo %>% select(-ens_raw, -ens_id) %>% t()
+chemonames <- chemoflip[1,]
+colnames(chemoflip) <- chemonames
+chemoflip <- chemoflip[2:nrow(chemoflip),]
+
+write.csv(intactflip, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_intactflip.csv")
+write.csv(chemoflip, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_chemoflip.csv")
+
+
+intactjoin <- read_csv("~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_intactflip.csv")%>%
+  mutate(X1 = rownames(intactflip)) %>%
+  select(X1, everything()) %>%
+  rowwise() %>%
+  mutate(O290 = Olfr290 + Olfr290_1) %>%
+  ungroup() %>%
+  select(-Olfr290, -Olfr290_1) %>%
+  rename(Olfr290 = O290)
+
+chemojoin <- read_csv("~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_chemoflip.csv") %>%
+  as_tibble() %>%
+  mutate(X1 = rownames(chemoflip)) %>%
+  select(X1, everything()) %>% 
+  rowwise() %>% 
+  mutate(O290 = Olfr290 + Olfr290_1) %>%
+  ungroup() %>%
+  select(-Olfr290, -Olfr290_1) %>%
+  rename(Olfr290 = O290)
+
+intactready <- new_file_divide %>%
+  left_join(intactjoin, by = "X1") %>%
+  rename("name" = "X1")
+
+chemoready <- new_file_divide %>%
+  left_join(chemojoin, by = "X1") %>%
+  rename("name" = X1)
+
+write.csv(intactready, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/output/covarintactolfrs_over_samples_200923.csv")
+write.csv(chemoready, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/output/covarintactchemo_over_samples_200923.csv")
+```
+

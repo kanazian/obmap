@@ -1,0 +1,317 @@
+---
+title: "MRI OB model in cubegrid"
+author: "kanazian"
+date: "Sep 28, 2020"
+output: html_document
+---
+# Goal: Import 3D data file for 1. an array of cubes and 2. a mouse brain
+Determine which cubes contain OB surface
+
+```{r setup, warning=F, message=F}
+library(geomorph)
+library(plotly)
+library(tidyverse)
+```
+
+## Used blender to generate an array of cubes around the OB from the Waxholm space MRI mouse brain
+This cube array has dimensions of 27AP x 24ML x 23DV with each dimension scaled to fit the respective dimensions of this OB. The number of cubes was taken from the typical number of sections I take in that dimension and the scaling was done because this 3D OB (https://www.ncbi.nlm.nih.gov/pubmed/20600960 B6 p66-78) is not age matched to our mice (B6 p20-22)
+```{r, eval=F}
+knitr::include_graphics("~/Desktop/obmap/r_analysis/mri_to_R/movies_images_blender/3dbraincubes.png")
+```
+
+
+### Using geomorph to read .ply 3D data files
+```{r eval=FALSE}
+#,showSpecimen=T if you want to view in rgl
+cubes <- read.ply("~/Desktop/obmap/r_analysis/mri_to_R/input/v1_cube.ply") 
+brain <- read.ply("~/Desktop/obmap/r_analysis/mri_to_R/input/v2_partial_brain.ply")
+
+cubeverts <- as_tibble(t(cubes$vb)) %>% mutate(position = 1:n())
+cubeverts %>% ggplot(aes(xpts, ypts)) + geom_point()
+
+brainverts <- as_tibble(t(brain$vb)) %>% mutate(position = 1:n())
+brainverts %>% ggplot(aes(ypts, zpts)) + geom_point()
+
+saveRDS(cubeverts, "~/Desktop/obmap/r_analysis/mri_to_R/output/cubeverts.RDS")
+saveRDS(brainverts, "~/Desktop/obmap/r_analysis/mri_to_R/output/brainverts.RDS")
+```
+
+
+### load vertices
+```{r}
+cubeverts <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/cubeverts.RDS")
+brainverts <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/brainverts.RDS")
+```
+
+
+# Initial investigation and dealing with problems
+Examining the vertices of the cube file (simpler than brain) indicates that each corner of a cube has multiple vertices. Since this file breaks objects down to triangles, a single cube could have as few as 3 or as many as 6 vertices. Not quite sure how closely neighboring cubes in the array are positioned, this file indicates small differences.  Goal of this chunk is to determine which vertices are "real" corners by finding vertices with relatively large and equally spaced distances between them in each plane. I also know the number of cubes alongside each dimension and the number of corner vertices should be equal to that number. Also note that the original cube is CENTERED at 0,0,0 and not at a vertex
+```{r}
+#X, the medial-lateral dimension
+cv_x1 <- cubeverts %>% group_by(xpts) %>% count()
+
+cv_x2 <- vector(mode = "double", length = dim(cv_x1)[1])
+for (i in 1:dim(cv_x1)[1]) {
+  if (i != 1) {
+    cv_x2[i] <- abs(cv_x1$xpts[i] - cv_x1$xpts[i-1]) 
+  } else {
+    cv_x2[i] <- 0
+  }
+}
+
+cv_x3 <- unlist(cv_x2)
+cv_x <- add_column(cv_x1, cv_x3) %>% as_tibble() %>% mutate(axisorder = 1:n())
+
+
+#Y, the anterior-posterior dimension
+cv_y1 <- cubeverts %>% group_by(ypts) %>% count()
+
+cv_y2 <- vector(mode = "double", length = dim(cv_y1)[1])
+for (i in 1:dim(cv_y1)[1]) {
+  if (i != 1) {
+    cv_y2[i] <- abs(cv_y1$ypts[i] - cv_y1$ypts[i-1]) 
+  } else {
+    cv_y2[i] <- 0
+  }
+}
+
+cv_y3 <- unlist(cv_y2)
+cv_y <- add_column(cv_y1, cv_y3) %>% as_tibble() %>% mutate(axisorder = 1:n())
+
+
+#Z, the ventral-dorsal dimension
+cv_z1 <- cubeverts %>% group_by(zpts) %>% count()
+
+cv_z2 <- vector(mode = "double", length = dim(cv_z1)[1])
+for (i in 1:dim(cv_z1)[1]) {
+  if (i != 1) {
+    cv_z2[i] <- abs(cv_z1$zpts[i] - cv_z1$zpts[i-1]) 
+  } else {
+    cv_z2[i] <- 0
+  }
+}
+
+cv_z3 <- unlist(cv_z2)
+cv_z <- add_column(cv_z1, cv_z3) %>% as_tibble() %>% mutate(axisorder = 1:n())
+
+#distance between cube edges should be similar to:
+(max(cv_y$ypts)-min(cv_y$ypts))/27
+
+#seems that in cv_y, the 1st and 8th coordinates, 9th and 15th, 16th and 22nd, etc. are vertices that have a similar distance to the cube size for that dimension as well as follow a pattern of aabcbaa|aabcbaa|aabcb....cbaa
+#for vertice coordinate arranged from min to max, seq(1,length(x),7) and seq(9,length(x),7) will produce list positions that are "true" corners
+trueCornersInOrder <- c(seq(1, 190, 7), seq(9,190,7))
+```
+
+
+# Make df to hold cube grid
+Colnames: cube.coord.ml, cube.coord.ap, cube.coord.dv, minML, maxML, minAP, maxAP, minDV, maxDV
+```{r}
+#Medial Lateral is X dim in 3D file, low values are more lateral, higher more medial. In OBmap low values are more medial, higher more lateral. Hence need to flip.
+mutML <- 24
+mutAP <- 27
+mutDV <- 23
+true_ml <- cv_x %>% filter(axisorder %in% trueCornersInOrder) %>% mutate(cube_ml = rep(seq(mutML,1), each = 2), lim_ml = rep(c("minML", "maxML"),mutML)) %>% select(xpts, cube_ml, lim_ml) %>% spread(lim_ml, xpts)
+
+#Anterior Posterior is Y dim in 3D file, low Y is more posterior, higher more anterior. In OBmap low values are anterior, higher more posterior. Hence need to flip.
+true_ap <- cv_y %>% filter(axisorder %in% trueCornersInOrder) %>% mutate(cube_ap = rep(seq(mutAP,1), each = 2), lim_ap = rep(c("minAP", "maxAP"),mutAP)) %>% select(ypts, cube_ap, lim_ap) %>% spread(lim_ap, ypts)
+
+#Dorsal Ventral is Z dim in 3D file, low Z is more ventral, higher more dorsal. In OBmap low values are ventral, higher more dorsal. Hence no need to flip.
+true_dv <- cv_z %>% filter(axisorder %in% trueCornersInOrder) %>% mutate(cube_dv = rep(seq(mutDV), each = 2), lim_dv = rep(c("minDV", "maxDV"),mutDV)) %>% select(zpts, cube_dv, lim_dv) %>% spread(lim_dv, zpts)
+
+
+#make a coordinate grid like in OBMap, however note that the the numbering will be off since there are more cubes in this model (27x24x23) compared to OBMap (24,23,22)
+cube_grid <- expand.grid(1:mutAP, 1:mutML, 1:mutDV)
+colnames(cube_grid) <- c("cube_ap", "cube_ml", "cube_dv")
+
+grid_coords <- as_tibble(cube_grid) %>% left_join(true_ap, by = "cube_ap") %>% left_join(true_ml, by = "cube_ml") %>% left_join(true_dv, by = "cube_dv") %>% mutate(cube = 1:n()) %>% select(cube, everything()) %>% dplyr::rename("AntPos" = cube_ap, "MedLat" = cube_ml, "VenDor" = cube_dv)
+```
+
+
+### Using vertices from the brain file, check which vertices are within the global cube grid limits. I will use only these vertices for assignments into the cube grid
+```{r}
+xmax <- max(cv_x1$xpts)
+xmin <- min(cv_x1$xpts)
+ymax <- max(cv_y1$ypts)
+ymin <- min(cv_y1$ypts)
+zmax <- max(cv_z1$zpts)
+zmin <- min(cv_z1$zpts)
+
+betweenX <- which(between(brainverts$xpts, xmin, xmax)) #1,227,597
+betweenY <- which(between(brainverts$ypts, ymin, ymax)) #1,113,114
+betweenZ <- which(between(brainverts$zpts, zmin, zmax)) #1,159,631
+betweenXY <- intersect(betweenX, betweenY) #541,372
+betweenXYZ <- intersect(betweenXY, betweenZ) #298,953
+
+brainV_in_cubes <- brainverts[betweenXYZ,]
+
+brainV_in_cubes %>% ggplot(aes(xpts, ypts)) + geom_point()
+```
+
+
+## Found ~300k vertices that fall within the grid of cubes
+Now lets find exactly which cubes have vertices within them.
+```{r}
+hits <- vector("double", length = dim(grid_coords)[1])
+for (cube in 1:dim(grid_coords)[1]) {
+  verts_in_cube <- length(which(between(brainV_in_cubes$xpts, grid_coords$minML[cube], grid_coords$maxML[cube]) &
+        between(brainV_in_cubes$ypts, grid_coords$minAP[cube], grid_coords$maxAP[cube]) &
+        between(brainV_in_cubes$zpts, grid_coords$minDV[cube], grid_coords$maxDV[cube])))
+  hits[cube] <- verts_in_cube
+}
+```
+
+
+## Plot the cubes with vertices
+```{r}
+grid_hits <- grid_coords %>% mutate(hitcount = hits, hitlog = ifelse(hits > 0, TRUE, FALSE))
+only_hits <- filter(grid_hits, hitlog == TRUE)
+
+#a little bit of optical nerve seems to have entered the cube grid
+weirdbit <- only_hits %>% filter(AntPos > 23 & MedLat > 19 & VenDor < 3) #14 points
+getWeird <- only_hits %>% mutate(isWeird = ifelse(AntPos > 23 & MedLat > 19 & VenDor < 3, TRUE, FALSE)) %>% filter(isWeird == FALSE) %>% select(-isWeird) #now missing 14 points
+
+plot_hits <- plot_ly(getWeird, x=~MedLat, y=~AntPos, z=~VenDor, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Hits:", hitcount), type='scatter3d', mode='markers')
+plot_hits
+```
+
+
+## Some cubes appear to be missing
+This is likely due to relatively flat faces on the object leading to larger triangles leading to more dispersed vertices.  Will try to correct this by examining neighbors in the cardinal directions and filling spots that have 2 cardinal neighbors. Manual addition will be done after if needed.
+```{r}
+#Find_Misses is a function that will find voxels that don't contain OB 3D model vertices but contain surface. Can be used to progressively fill in misses.
+#hits is a dataframe with cube_number, AP, ML, DV coordinates, and additional info pertaining to the presence of vertices within a voxel. Coordinate names are AntPos, MedLat, VenDor
+#all voxels is a expand.grid voxel framework for all possible AP, ML, DV coordinates. Coordinate names are: cube_ap, cube_ml, cube_dv
+#output is a single dataframe with AntPos, MedLat, VenDor coordinates as well as a new variable: type, which indicates whether the point was originally a hit or miss
+
+Find_Misses <- function(hits, all_voxels) {
+  #remove coordinates with hits
+  nohit_which <- vector("double", length = dim(all_voxels)[1])
+  for (cube in 1:dim(all_voxels)[1]) {
+  nohit_which[cube] <- length(which(hits$AntPos == all_voxels$cube_ap[cube] & 
+                                    hits$MedLat == all_voxels$cube_ml[cube] &
+                                    hits$VenDor == all_voxels$cube_dv[cube]))
+  }
+  nohits <- all_voxels[which(nohit_which == 0),] %>% as_tibble()
+  
+  #vectors to hold neighboring hits
+  neighs_ap <- vector("double", length = dim(nohits)[1])
+  neighs_ml <- vector("double", length = dim(nohits)[1])
+  neighs_vd <- vector("double", length = dim(nohits)[1])
+  
+  #find non-hit voxels with two neighbors in a single cardinal direction
+  for (cube in 1:dim(nohits)[1]) {
+  neighs_ap[cube] <- length(which(between(hits$AntPos, nohits$cube_ap[cube]-1, nohits$cube_ap[cube]+1) &
+        hits$AntPos != nohits$cube_ap[cube] &
+        hits$MedLat == nohits$cube_ml[cube] &
+        hits$VenDor == nohits$cube_dv[cube]))
+  
+  neighs_ml[cube] <- length(which(between(hits$MedLat, nohits$cube_ml[cube]-1, nohits$cube_ml[cube]+1) &
+        hits$MedLat != nohits$cube_ml[cube] &
+        hits$AntPos == nohits$cube_ap[cube] &
+        hits$VenDor == nohits$cube_dv[cube]))
+    
+  neighs_vd[cube] <- length(which(between(hits$VenDor, nohits$cube_dv[cube]-1, nohits$cube_dv[cube]+1) &
+        hits$VenDor != nohits$cube_dv[cube] &
+        hits$MedLat == nohits$cube_ml[cube] &
+        hits$AntPos == nohits$cube_ap[cube]))
+  }
+  
+  neigh_grid <- as_tibble(cbind(nohits, neighs_ap, neighs_ml, neighs_vd))
+  
+  two_neighs <- filter(neigh_grid, neighs_ap == 2 | neighs_ml == 2 | neighs_vd == 2)
+  
+  simpleHits <- hits %>% select(AntPos:VenDor) %>% mutate(type = "Hit")
+  simpleMiss <- two_neighs %>% rename("AntPos" = cube_ap, "MedLat" = cube_ml, "VenDor" = cube_dv) %>% select(AntPos:VenDor) %>% mutate(type = "Missed")
+  
+  hitandmiss <- bind_rows(simpleHits, simpleMiss)
+}
+
+findMissOut_1 <- Find_Misses(getWeird, cube_grid)
+
+#plot round 1  
+plot_ly(findMissOut_1, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+```
+
+
+### Find Misses Round 2: The Sequel
+```{r}
+findMissOut_2 <- Find_Misses(findMissOut_1, cube_grid)
+plot_ly(findMissOut_2, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+
+#adding points that DONT have 2 cardinal neighbors aka wont be found in Find_Misses
+findMissOut_3 <- findMissOut_2 %>% add_row(AntPos = 22, MedLat = 3, VenDor = 21, type="add")
+plot_ly(findMissOut_3, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+```
+
+
+# Declare a national emergency and build a border wall
+```{r}
+most_medial <- findMissOut_3 %>% filter(MedLat == 1)
+#for each AP coord, if more than 2 points in AP coord, add a bunch of vd points to fill therange
+border_wall <- expand.grid(0,0,0)
+
+for (i in seq(range(most_medial$AntPos)[1],range(most_medial$AntPos)[2])) {
+  med_ap_count <- most_medial %>% filter(AntPos == i)
+  
+  if (dim(med_ap_count)[1] >= 2) {
+    min_vd <- min(med_ap_count$VenDor)
+    max_vd <- max(med_ap_count$VenDor)
+    build_the_wall <- expand.grid(med_ap_count$AntPos[1],med_ap_count$MedLat[1],min_vd:max_vd)
+  }
+  
+  border_wall <- bind_rows(border_wall, build_the_wall)
+}
+
+border_wall <- as_tibble(border_wall) %>% rename("AntPos" = Var1, "MedLat" = Var2, "VenDor" = Var3) %>% mutate(type = "Wall") %>% filter(AntPos > 0)
+
+walled <- bind_rows(findMissOut_3, border_wall)
+plot_ly(walled, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+```
+
+
+# Add an interior layer 
+```{r}
+#define a central coordinate in the middle of the OB, for each hit, note direction toward central coordinate and add a point
+#try to avoid multi dimensions, lets instead move along the anterior posterior 
+inner_layer <- tibble(AntPos = 0, MedLat = 0, VenDor = 0, type = "init")
+
+for (cube in 1:dim(walled)[1]) {
+  if (walled$AntPos[cube] == 1) {
+    #if front wall, add a cube directly posterior
+    inner_layer <- inner_layer %>% add_row(AntPos = 2, MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube], type = "F")
+  } else if (walled$MedLat[cube] >= 10 && walled$VenDor[cube] >= 13) {
+    #if more Lateral and more Dorsal, add a cube more ventral and more medial
+    inner_layer <- inner_layer %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube]-1, type = "A") %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube]-1, VenDor = walled$VenDor[cube], type = "A")
+  } else if (walled$MedLat[cube] >= 10  &&  walled$VenDor[cube] < 13) {
+    #if more Lateral and more Ventral, add ...
+    inner_layer <- inner_layer %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube]+1, type = "B") %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube]-1, VenDor = walled$VenDor[cube], type = "B")
+  } else if (walled$MedLat[cube] < 10  &&  walled$VenDor[cube] >= 13) {
+    #if more Medial and more Dorsal, add ...
+    inner_layer <- inner_layer %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube]-1, type = "C") %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube]+1, VenDor = walled$VenDor[cube], type = "C")
+  } else if (walled$MedLat[cube] < 10  &&  walled$VenDor[cube] < 13) {
+    #if more Medial and more Ventral, add ...
+    inner_layer <- inner_layer %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube]+1, type = "D") %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube]+1, VenDor = walled$VenDor[cube], type = "D")
+  } else {
+    #else make a note
+    inner_layer <- inner_layer %>% add_row(AntPos = walled$AntPos[cube], MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube], type = "E")
+  }
+}
+inner_layer %>% group_by(type) %>% count()
+inners_dups <- inner_layer %>% filter(type != "init")
+inner <- inners_dups[-which(duplicated(inners_dups)==TRUE),]
+
+outer <- walled %>% select(-type) %>% mutate(type = "outer") 
+like_an_onion <- bind_rows(outer, inner)
+
+plot_ly(like_an_onion, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+```
+
+
+# Todo
+Clearly some problems with creation of the inner layer.  Need to add if statements to deal with outer voxels that lie on a curve.
+
+# Export for incorporation with OBMap
+```{r, eval=F}
+saveRDS(like_an_onion, "~/Desktop/obmap/r_analysis/mri_to_R/output/190218_outer_inner_coords.RDS")
+```
+
