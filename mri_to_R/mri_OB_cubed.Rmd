@@ -2,9 +2,7 @@
 title: "MRI OB model in cubegrid"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: 
-  html_document:
-    keep_md: true
+output: github_document
 always_allow_html: true
 ---
 # Goal: 
@@ -30,6 +28,7 @@ As this analysis involves a lot of 3D models, I use a lot of plotly in order to 
 
 ### load packages
 ```{r setup, warning=F, message=F}
+knitr::opts_chunk$set(warning=F)
 library(geomorph)
 library(plotly)
 library(tidyverse)
