@@ -5,19 +5,40 @@ date: "Sep 28, 2020"
 output: github_document
 always_allow_html: true
 ---
-# Goal: Import 3D data file for 1. an array of cubes and 2. a mouse brain
-Determine which cubes contain OB surface
+# Goal: 
+Generate 3d voxel coordinates representing the outer surface (roughly the glomerular layer) for incorporation as a scaffold for the 3d statistical reconstruction of single dimension targeted transcriptomics data.
 
+## Prior Steps:
+1. Downloaded MRI model (.nii) from Duke CIVM voxport, Microscopic DTI of mouse brain (PMC3085633)
+2. Converted .nii to .stl (common 3d print format) following this guide: https://layerfmri.com/2018/07/25/3d-printing-nii-data/
+3. Loaded .stl into Blender
+4. Created an array of cubes matching the # of sections taken for targeted transcriptomics of each dimension, 27 Anterior-Posterior, 24 Medial-Lateral, 23 Ventral-Dorsal. This cube array was stretched in each dimension to encompass the entire OB due to difference in age between MRI study (p66-78) and our (p21) mice. OB was tilted slightly in order to better represent the less erect nature of the OB after the OE is removed in our dissection
+5. Output OB and cubegrid as .ply files
+
+## Plan:
+3D models are comprised of polygons. The corner points of these polygons can be found as 3D coordinates in the .ply files. By finding the coordinates of the corners of each cube in the grid, I can determine which cubes contain OB polygon corner coordinates. These cubes are the ones containing surface of the OB where OR glomeruli are located. 
+
+## Potential problems: 
+The model includes both OBs with no gap between them so there is technically no medial surface to model, can correct using the most dorsal and ventral medial coordinates and filling in.
+
+There may be overly large polygons. MRI scans are taken in sections while the OB is a curved surface so even the best model is kind of like building a ball with legos.  This may lead to overly large rectangles whose edges may span multiple cubes leading to corners not being present in certain cubes which do contain OB surface. Can correct by adding neighbors to initial set of surface containing cubes in order to fill in gaps where surface should be.
+
+# Notes:
+As this analysis involves a lot of 3D models, I use a lot of plotly in order to have interactive 3D plots which does not display in the github document (and it doesn't seem there is an easy way to do so).  Until that time, if you are interested in seeing the 3D outputs, please download the .html files where you can freely rotate and zoom the 3D models.
+
+### load packages
 ```{r setup, warning=F, message=F}
 library(geomorph)
 library(plotly)
 library(tidyverse)
+library(knitr)
 ```
 
-## Used blender to generate an array of cubes around the OB from the Waxholm space MRI mouse brain
-This cube array has dimensions of 27AP x 24ML x 23DV with each dimension scaled to fit the respective dimensions of this OB. The number of cubes was taken from the typical number of sections I take in that dimension and the scaling was done because this 3D OB (https://www.ncbi.nlm.nih.gov/pubmed/20600960 B6 p66-78) is not age matched to our mice (B6 p20-22)
-```{r, eval=F}
-knitr::include_graphics("~/Desktop/obmap/r_analysis/mri_to_R/movies_images_blender/3dbraincubes.png")
+
+## Blender view of OB in cube grid
+Trimmed OB in half due to crashes
+```{r, out.width = "75%", out.height = "75%"}
+include_graphics("3dbraincubes.png")
 ```
 
 
@@ -28,20 +49,20 @@ cubes <- read.ply("~/Desktop/obmap/r_analysis/mri_to_R/input/v1_cube.ply")
 brain <- read.ply("~/Desktop/obmap/r_analysis/mri_to_R/input/v2_partial_brain.ply")
 
 cubeverts <- as_tibble(t(cubes$vb)) %>% mutate(position = 1:n())
-cubeverts %>% ggplot(aes(xpts, ypts)) + geom_point()
-
 brainverts <- as_tibble(t(brain$vb)) %>% mutate(position = 1:n())
-brainverts %>% ggplot(aes(ypts, zpts)) + geom_point()
 
 saveRDS(cubeverts, "~/Desktop/obmap/r_analysis/mri_to_R/output/cubeverts.RDS")
 saveRDS(brainverts, "~/Desktop/obmap/r_analysis/mri_to_R/output/brainverts.RDS")
 ```
 
 
-### load vertices
+### load vertices (polygon corner coordinates)
 ```{r}
 cubeverts <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/cubeverts.RDS")
+cubeverts %>% ggplot(aes(xpts, ypts)) + geom_point()
+
 brainverts <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/brainverts.RDS")
+brainverts %>% ggplot(aes(ypts, zpts)) + geom_point()
 ```
 
 
@@ -57,8 +78,8 @@ for (i in 1:dim(cv_x1)[1]) {
     cv_x2[i] <- abs(cv_x1$xpts[i] - cv_x1$xpts[i-1]) 
   } else {
     cv_x2[i] <- 0
-  }
-}
+  } #endif
+} #endfor
 
 cv_x3 <- unlist(cv_x2)
 cv_x <- add_column(cv_x1, cv_x3) %>% as_tibble() %>% mutate(axisorder = 1:n())
@@ -73,8 +94,8 @@ for (i in 1:dim(cv_y1)[1]) {
     cv_y2[i] <- abs(cv_y1$ypts[i] - cv_y1$ypts[i-1]) 
   } else {
     cv_y2[i] <- 0
-  }
-}
+  } #endif
+} #endfor
 
 cv_y3 <- unlist(cv_y2)
 cv_y <- add_column(cv_y1, cv_y3) %>% as_tibble() %>% mutate(axisorder = 1:n())
@@ -89,8 +110,8 @@ for (i in 1:dim(cv_z1)[1]) {
     cv_z2[i] <- abs(cv_z1$zpts[i] - cv_z1$zpts[i-1]) 
   } else {
     cv_z2[i] <- 0
-  }
-}
+  } #endif
+} #endfor
 
 cv_z3 <- unlist(cv_z2)
 cv_z <- add_column(cv_z1, cv_z3) %>% as_tibble() %>% mutate(axisorder = 1:n())
@@ -246,6 +267,7 @@ plot_ly(findMissOut_3, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list
 
 
 # Declare a national emergency and build a border wall
+Originally written in 2018
 ```{r}
 most_medial <- findMissOut_3 %>% filter(MedLat == 1)
 #for each AP coord, if more than 2 points in AP coord, add a bunch of vd points to fill therange
@@ -308,11 +330,11 @@ plot_ly(like_an_onion, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list
 ```
 
 
-# Todo
-Clearly some problems with creation of the inner layer.  Need to add if statements to deal with outer voxels that lie on a curve.
-
 # Export for incorporation with OBMap
 ```{r, eval=F}
 saveRDS(like_an_onion, "~/Desktop/obmap/r_analysis/mri_to_R/output/190218_outer_inner_coords.RDS")
 ```
 
+
+# Todo
+Clearly some problems with creation of the inner layer.  Need to add if statements to deal with outer voxels that lie on a curve.
