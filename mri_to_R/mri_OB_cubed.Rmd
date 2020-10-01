@@ -2,11 +2,12 @@
 title: "MRI OB model in cubegrid"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: github_document
-always_allow_html: true
+output: 
+  html_document:
+    keep_md: true
 ---
 # Goal: 
-Generate 3d voxel coordinates representing the outer surface (roughly the glomerular layer) for incorporation as a scaffold for the 3d statistical reconstruction of single dimension targeted transcriptomics data.
+Generate 3D voxel coordinates representing the outer surface (roughly the glomerular layer) for incorporation as a scaffold for the statistical reconstruction of 3D OR glomeruli positions from single dimension targeted transcriptomics data.
 
 ## Prior Steps:
 1. Downloaded MRI model (.nii) from Duke CIVM voxport, Microscopic DTI of mouse brain (PMC3085633)
@@ -38,7 +39,8 @@ library(knitr)
 ## Blender view of OB in cube grid
 Trimmed OB in half due to crashes
 ```{r, out.width = "75%", out.height = "75%"}
-include_graphics("3dbraincubes.png")
+include_graphics("3dbraincubes.png") 
+#image needs to have same path as .Rmd file
 ```
 
 
