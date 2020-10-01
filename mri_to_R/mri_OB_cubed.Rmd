@@ -5,6 +5,7 @@ date: "Sep 28, 2020"
 output: 
   html_document:
     keep_md: true
+always_allow_html: true
 ---
 # Goal: 
 Generate 3D voxel coordinates representing the outer surface (roughly the glomerular layer) for incorporation as a scaffold for the statistical reconstruction of 3D OR glomeruli positions from single dimension targeted transcriptomics data.
