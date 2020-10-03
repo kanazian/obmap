@@ -1,18 +1,19 @@
----
-title: "OBmap heatmaps"
-author: "kanazian"
-date: "Sep 28, 2020"
-output: 
-  html_document: 
-    keep_md: true
----
+OBmap heatmaps
+================
+kanazian
+Sep 28, 2020
+
 # Goal:
-Heatmaps of OR gene expression across single dimension positions annotated with features, examination of gene covariance and calculation of glomerulus symmetry
+
+Heatmaps of OR gene expression across single dimension positions
+annotated with features, examination of gene covariance and calculation
+of glomerulus symmetry
 
 # Setup
+
 Load packages, functions and data
 
-```r
+``` r
 knitr::opts_chunk$set(warning=F)
 #packages
 library(heatmaply)
@@ -1381,11 +1382,9 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
 allmice_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv") %>% select(-X1)
 ```
 
-```
-## Warning: Missing column names filled in: 'X1' [1]
-```
+    ## Warning: Missing column names filled in: 'X1' [1]
 
-```r
+``` r
 allmice_covars <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/allmice_covariates_trim_voxweights_v3.csv")
 symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline.csv")
 good_3dpoint <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/goodpointORs972_allchemo_listdorML_200820.csv")
@@ -1396,24 +1395,22 @@ info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv") %
 set.seed(711)
 ```
 
-
 # Load 3D model parameters and data
-functions loaded from v21_gen25.Rmd
 
-```r
+functions loaded from v21\_gen25.Rmd
+
+``` r
 kzY <- allmice_tpm %>% filter(dimrep == 1 | dimrep == 2)
 ectopic <- c("Olfr287","Olfr32")
 kzYgood <- dplyr::select(kzY, -ectopic) %>% dplyr::select(-name, -rep, -slice, -dim, -dimrep)
 ```
 
-```
-## Note: Using an external vector in selections is ambiguous.
-## ℹ Use `all_of(ectopic)` instead of `ectopic` to silence this message.
-## ℹ See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
-## This message is displayed once per session.
-```
+    ## Note: Using an external vector in selections is ambiguous.
+    ## ℹ Use `all_of(ectopic)` instead of `ectopic` to silence this message.
+    ## ℹ See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
+    ## This message is displayed once per session.
 
-```r
+``` r
 kzmY <- as.matrix(kzYgood)
 rownames(kzmY) <- paste0("sample", 1:dim(kzY)[1])
 
@@ -1421,26 +1418,24 @@ rownames(kzmY) <- paste0("sample", 1:dim(kzY)[1])
 kzX <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/allmice_covariates_trim_voxweights_v3.csv") %>% filter(name %in% kzY$name)
 ```
 
-```
-## Parsed with column specification:
-## cols(
-##   name = col_character(),
-##   rep = col_double(),
-##   slice = col_double(),
-##   dim = col_character(),
-##   count = col_double(),
-##   weight = col_double(),
-##   glomarea.apOMP.mlvdseb = col_double(),
-##   totalarea.seb = col_double(),
-##   count.clear = col_double(),
-##   count.unclear = col_double(),
-##   count.total = col_double(),
-##   glom.seb = col_double(),
-##   glom.kz = col_double()
-## )
-```
+    ## Parsed with column specification:
+    ## cols(
+    ##   name = col_character(),
+    ##   rep = col_double(),
+    ##   slice = col_double(),
+    ##   dim = col_character(),
+    ##   count = col_double(),
+    ##   weight = col_double(),
+    ##   glomarea.apOMP.mlvdseb = col_double(),
+    ##   totalarea.seb = col_double(),
+    ##   count.clear = col_double(),
+    ##   count.unclear = col_double(),
+    ##   count.total = col_double(),
+    ##   glom.seb = col_double(),
+    ##   glom.kz = col_double()
+    ## )
 
-```r
+``` r
 N <- dim(kzmY)[1] #number of sections
 D <-  dim(kzmY)[2] #number of genes
 
@@ -1461,16 +1456,14 @@ d3 <- 23 #vendor
 voxalls <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/voxalls_200924.csv")
 ```
 
-```
-## Parsed with column specification:
-## cols(
-##   AntPos = col_double(),
-##   MedLat = col_double(),
-##   VenDor = col_double()
-## )
-```
+    ## Parsed with column specification:
+    ## cols(
+    ##   AntPos = col_double(),
+    ##   MedLat = col_double(),
+    ##   VenDor = col_double()
+    ## )
 
-```r
+``` r
 tidy_result <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/tidyresults/200i_allchemo_dimrep12_allvox.RDS")
 
 #figure out number of rows in tidy_result corresponding to each Olfr
@@ -1502,10 +1495,9 @@ ranked <- tidy_result %>%
          voxRankSNR, AP_Avgp50:voxSNRdim, voxel)
 ```
 
-
 # tpm cutoff for all dims
 
-```r
+``` r
 allmice_tpm <- allmice_tpm[,1:1121]
 
 #calculate average TPM of an OR across all sections
@@ -1531,20 +1523,20 @@ ggplot(ors_below_num, aes(below_num, ors_below)) +
   geom_point()
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-2-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
 
-```r
+``` r
 #using 24 to start as it falls early on the curve and removes 350 ORs
 alldim_ap_tpm_cut <- allmice_tpm[,-which(or_mean_all < 10)] %>% filter(dim == "AntPos")
 alldim_ml_tpm_cut <- allmice_tpm[,-which(or_mean_all < 10)] %>% filter(dim == "MedLat")
 alldim_vd_tpm_cut <- allmice_tpm[,-which(or_mean_all < 10)] %>% filter(dim == "VenDor")
 ```
 
-
 # ANTERIOR-POSTERIOR
+
 ## tpm cutoff
 
-```r
+``` r
 ap_tpm <- allmice_tpm %>% filter(dim == "AntPos")
 
 #calculate average TPM of an OR across all sections
@@ -1570,17 +1562,16 @@ ggplot(ors_below_num, aes(below_num, ors_below)) +
   geom_point()
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-3-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
-```r
+``` r
 #using 24 to start as it falls early on the curve and removes 350 ORs
 tpm_cut <- ap_tpm[,-which(or_mean < 8)]
 ```
 
-
 ## normalize values
 
-```r
+``` r
 m4_tpm <- alldim_ap_tpm_cut %>% filter(rep == 4) %>% select(-name, -rep, -dim, -dimrep, -Olfr287, -Olfr32, -Olfr361)
 m6_tpm <- alldim_ap_tpm_cut %>% filter(rep == 6) %>% select(-name, -rep, -dim, -dimrep, -Olfr287, -Olfr32, -Olfr361)
 m7_tpm <- alldim_ap_tpm_cut %>% filter(rep == 7) %>% select(-name, -rep, -dim, -dimrep, -Olfr287, -Olfr32, -Olfr361)
@@ -1601,11 +1592,12 @@ m15_norm <- NormTPM(m15_tpm)
 #plots dont mean much without sorting, good to look at hclust of section axis however. ideally y should move sequentially, may be worth investigating sections that appear out of order for OR tpm total, # missing ORs, # high ORs, etc.
 ```
 
-
 ## apply voxel factors
-make sort for voxel adjusted TPM
 
-```r
+make sort for voxel adjusted
+TPM
+
+``` r
 ap_voxweights <- allmice_covars %>% filter(rep == 10) %>% select(slice, weight)
 
 m4_Vnorm <- Voxnormify(m4_tpm, ap_voxweights)
@@ -1634,56 +1626,56 @@ m15_voxsort <- SortByList(m15_Vnorm, m46710_voxsort)
 MakeBlackRedHeatmap(m4_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m6_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m7_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-3.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m10_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-4.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m13_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-5.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m15_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-6.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-6.png)<!-- -->
 
-```r
+``` r
 #examine mergeDF used to make sort
 m46710mergeV <- normNormDF4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm)
 m46710mergeV_voxnormsort <- SortByList(m46710mergeV, m46710_voxsort)
 MakeBlackRedHeatmap(m46710mergeV_voxnormsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-5-7.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-5-7.png)<!-- -->
 
-```r
+``` r
 apcombohm <- MakeBlackRedHeatmap(m4_voxsort) + MakeBlackRedHeatmap(m6_voxsort) + MakeBlackRedHeatmap(m7_voxsort)
 ```
 
-
 # VENTRAL-DORSAL
+
 ## VD tpm cutoff
 
-```r
+``` r
 vd_tpm <- allmice_tpm %>% filter(dim == "VenDor")
 
 #calculate average TPM of an OR across all sections
@@ -1709,9 +1701,9 @@ ggplot(vd_ors_below_num, aes(vd_below_num, vd_ors_below)) +
   geom_point()
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-6-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
-```r
+``` r
 #using 24 to start as it falls early on the curve and removes 350 ORs
 vd_tpm_cut <- vd_tpm[,-which(vd_or_mean < 8)]
 
@@ -1754,38 +1746,38 @@ m14_voxsort <- SortByList(m14_Vnorm, m91214_voxsort)
 MakeBlackRedHeatmap(m9_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-6-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m12_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-6-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-6-3.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m14_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-6-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-6-4.png)<!-- -->
 
-```r
+``` r
 #examine mergeDF used to make sort
 m91214mergeV <- normNormDF3(m9_Vnorm, m12_Vnorm, m14_Vnorm)
 m91214mergeV_voxnormsort <- SortByList(m91214mergeV, m91214_voxsort)
 MakeBlackRedHeatmap(m91214mergeV_voxnormsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-6-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-6-5.png)<!-- -->
 
-```r
+``` r
 vdcombohm <- MakeBlackRedHeatmap(m9_voxsort) + MakeBlackRedHeatmap(m12_voxsort) + MakeBlackRedHeatmap(m14_voxsort) 
 ```
 
-
 # MEDIAL-LATERAL
+
 ## ML tpm cutoff
 
-```r
+``` r
 ml_tpm <- allmice_tpm %>% filter(dim == "MedLat")
 
 #calculate average TPM of an OR across all sections
@@ -1811,9 +1803,9 @@ ggplot(ml_ors_below_num, aes(ml_below_num, ml_ors_below)) +
   geom_point()
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-7-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
-```r
+``` r
 #using 24 to start as it falls early on the curve and removes 350 ORs
 ml_tpm_cut <- ml_tpm[,-which(ml_or_mean < 8)]
 
@@ -1858,38 +1850,39 @@ m16_voxsort <- SortByList(m16_Vnorm, m81116_voxsort)
 MakeBlackRedHeatmap(m8_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-7-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m11_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-7-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-7-3.png)<!-- -->
 
-```r
+``` r
 MakeBlackRedHeatmap(m16_voxsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-7-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-7-4.png)<!-- -->
 
-```r
+``` r
 #examine mergeDF used to make sort
 m81116mergeV <- normNormDF3(m8_Vnorm, m11_Vnorm, m16_Vnorm)
 m81116mergeV_voxnormsort <- SortByList(m81116mergeV, m81116_voxsort)
 MakeBlackRedHeatmap(m81116mergeV_voxnormsort)
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-7-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-7-5.png)<!-- -->
 
-```r
+``` r
 mlcombohm <- MakeBlackRedHeatmap(m8_voxsort)+MakeBlackRedHeatmap(m11_voxsort)+MakeBlackRedHeatmap(m16_voxsort)
 ```
 
-
 # matrix similarity tests
-try sorting with kmeans clustering
 
-```r
+try sorting with kmeans
+clustering
+
+``` r
 voxsort_cor <- Multi_Spear_mtx(m4_voxsort, m6_voxsort, m7_voxsort, m10_voxsort)
 #heatmaply_cor(voxsort_cor, Rowv=F, Colv=F)
 
@@ -1900,13 +1893,15 @@ m4_kmsort <- SortByList(m4_voxsort, km_sort)
 #need to add km_sort as well as voxsort and compare, perhaps possible to determine order of km clusters from AtoP
 ```
 
-
 # Which ORs covary?
-PCA, tsne, dimred plots
-For each OR, create a vector holding meanposition for all replicates and all dimensions
-Calculate all pairwise correlations for these vectors and determine a cutoff for covariance, can also compare lowest distance by subtracting or something
 
-```r
+PCA, tsne, dimred plots For each OR, create a vector holding
+meanposition for all replicates and all dimensions Calculate all
+pairwise correlations for these vectors and determine a cutoff for
+covariance, can also compare lowest distance by subtracting or
+something
+
+``` r
 alldim_m4 <- alldim_ap_tpm_cut %>% filter(rep == 4) %>% dplyr::select(-name, -rep, -dim, -dimrep)
 alldim_m6 <- alldim_ap_tpm_cut %>% filter(rep == 6) %>% select(-name, -rep, -dim, -dimrep)
 alldim_m7 <- alldim_ap_tpm_cut %>% filter(rep == 7) %>% select(-name, -rep, -dim, -dimrep)
@@ -1982,29 +1977,24 @@ bestcor400 <- which(branch400$cor == max(branch400$cor, na.rm=T))
 branch400$heatmaps[bestcor400]
 ```
 
-```
-## [[1]]
-```
+    ## [[1]]
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-9-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
-```r
+``` r
 bestdist400 <- which(branch400$avg_dist == min(branch400$avg_dist, na.rm=T))
 branch400$`3D`[107]
 ```
 
-```
-## [[1]]
-```
+    ## [[1]]
 
-```r
+``` r
 #find something to define the branch with the highest ranked cor that is also the highest ranked 3d
 ```
 
-
 # 10 group covariance
 
-```r
+``` r
 heatmaply_cor(meanpos_cor, k_row = 10, dist_method = "euclidean", hclust_method = "complete")
 
 dend <- hclust(dist(meanpos_cor, method = "euclidean"), method = "complete")
@@ -2100,10 +2090,9 @@ length(tree10)
 ap2
 ```
 
+# examine covariance
 
-# examine covariance 
-
-```r
+``` r
 meanpos_dist <- matrix(nrow = nrow(meanpos_mtx), ncol = nrow(meanpos_mtx))
 for (i in 1:nrow(meanpos_mtx)) {
   for (j in 1:nrow(meanpos_mtx)) {
@@ -2191,34 +2180,30 @@ for (k in 1:ncol(dd_bin)) {
 } #endfork
 ```
 
+\#umap
+stuff
 
-#umap stuff
-
-```r
+``` r
 greekinfo <- read_csv("~/Desktop/obmap/r_analysis/inputs/ORs_genomicFeatures_mmusGRCm38.99.csv") %>% unique()
 ```
 
-```
-## Parsed with column specification:
-## cols(
-##   .default = col_double(),
-##   olfrname = col_character(),
-##   greek_name = col_character(),
-##   greek_score = col_character(),
-##   closest_greek = col_character(),
-##   tf_ebf = col_logical(),
-##   tf_lhx2 = col_logical(),
-##   tf_h3k9me2 = col_logical(),
-##   OR_TSS_within500 = col_logical(),
-##   ensembl_gene = col_character()
-## )
-```
+    ## Parsed with column specification:
+    ## cols(
+    ##   .default = col_double(),
+    ##   olfrname = col_character(),
+    ##   greek_name = col_character(),
+    ##   greek_score = col_character(),
+    ##   closest_greek = col_character(),
+    ##   tf_ebf = col_logical(),
+    ##   tf_lhx2 = col_logical(),
+    ##   tf_h3k9me2 = col_logical(),
+    ##   OR_TSS_within500 = col_logical(),
+    ##   ensembl_gene = col_character()
+    ## )
 
-```
-## See spec(...) for full column specifications.
-```
+    ## See spec(...) for full column specifications.
 
-```r
+``` r
 umap_meanpos <- umap(meanpos_mtx, n_neighbors = 30, learning_rate = 0.5, init = "spca") %>% 
   as_tibble %>%
   mutate(olfrname = rownames(meanpos_mtx)) %>%
@@ -2245,47 +2230,46 @@ ggplot(umap_meanpos) +
   geom_point(aes(UMAP_1, UMAP_2, color = class_fct)) + ggtitle("Class")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
-```r
+``` r
 ggplot(umap_meanpos) + 
   geom_point(aes(UMAP_1, UMAP_2, color = oe_region)) + ggtitle("oe_region")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-2.png)<!-- -->
 
-```r
+``` r
 ggplot(umap_meanpos) + 
   geom_point(aes(UMAP_1, UMAP_2, color = OlfrNum)) + ggtitle("Gene name #")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-3.png)<!-- -->
 
-```r
+``` r
 ggplot(umap_meanpos) + 
   geom_point(aes(UMAP_1, UMAP_2, color = cluster_id)) + ggtitle("ClusterID")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-4.png)<!-- -->
 
-```r
+``` r
 ggplot(umap_meanpos) + 
   geom_point(aes(UMAP_1, UMAP_2, color = closest_greek)) + ggtitle("Closest Greek")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-5.png)<!-- -->
 
-```r
+``` r
 ggplot(umap_meanpos) + 
   geom_point(aes(UMAP_1, UMAP_2, color = chromosome)) + ggtitle("chr")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-12-6.png)<!-- -->
-
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-12-6.png)<!-- -->
 
 ## Compare Ant and Post Peak Positions across mice
 
-```r
+``` r
 appp_vnorm <- MultiAPPP(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, "_m4", "_m6", "_m7", "_m10")
 
 forcomboant <- appp_vnorm %>% select(antpeak_m4, antpeak_m6) %>%
@@ -2302,13 +2286,11 @@ ggplot(appp_vnorm) +
   geom_smooth(data = forcombo, aes(combo4, combo6), color = "purple", method = "lm", se=F)
 ```
 
-```
-## `geom_smooth()` using formula 'y ~ x'
-```
+    ## `geom_smooth()` using formula 'y ~ x'
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
-```r
+``` r
 # #above as boxes or violins
 # ggplot(appp_vnorm %>% mutate(apm4 = antpeak_m4 + 100, ppm4 = postpeak_m4 + 100)) +
 #   geom_boxplot(aes(as.character(apm4), antpeak_m6), color = "red", alpha = 0.3) +
@@ -2371,59 +2353,49 @@ appp_vnorm_dist <- appp_vnorm %>% mutate(antdist_46 = abs(antpeak_m4 - antpeak_m
 cor(appp_vnorm$antpeak_m4, appp_vnorm$antpeak_m6, method = "spearman")
 ```
 
-```
-## [1] 0.6261142
-```
+    ## [1] 0.6261142
 
-```r
+``` r
 #how many ORs have identical distance between ant and post peak (could be diff directions thou)
 length(which(appp_vnorm_dist$antdist_46 == appp_vnorm_dist$postdist_46))
 ```
 
-```
-## [1] 155
-```
+    ## [1] 155
 
-```r
+``` r
 #plot distance between ant peaks for m4 and m6
 #for these two mice, most ORs have anterior peaks that are within 2 sections
 ggplot(appp_vnorm_dist) + 
   geom_histogram(aes(antdist_46), fill = "red")
 ```
 
-```
-## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-```
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
 
-```r
+``` r
 #plot distance between post peaks for m4 and m6
 #for these two mice, most ORs have posterior peaks that are within 2.5 sections
 ggplot(appp_vnorm_dist) + 
   geom_histogram(aes(postdist_46), fill = "blue")
 ```
 
-```
-## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-```
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-3.png)<!-- -->
 
-```r
+``` r
 #plot mean distance between all mice for all ant and all post peaks for each OR
 #across all mice, most ORs have anterior and posterior peaks within 5 sections 
 ggplot(appp_vnorm_dist) + 
   geom_histogram(aes(apmean_mean))
 ```
 
-```
-## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
-```
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-4.png)<!-- -->
 
-```r
+``` r
 #plot ant vs post distance for m4 vs m6
 #for these two mice, most ORs have anterior and posterior peaks within 2 sections
 #46 = 2
@@ -2437,30 +2409,27 @@ ggplot(appp_vnorm_dist %>% group_by(antdist_46, postdist_46) %>% mutate(count = 
   geom_smooth(aes(antdist_46, postdist_46))
 ```
 
-```
-## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
-```
+    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-5.png)<!-- -->
 
-```r
+``` r
 #plot ant vs post distance mean for all mice
 ggplot(appp_vnorm_dist %>% group_by(antdistmean_46710, postdistmean_46710) %>% mutate(count = n())) +
   geom_point(aes(antdistmean_46710, postdistmean_46710, size = count), alpha = 0.25) + 
   geom_smooth(aes(antdistmean_46710, postdistmean_46710))
 ```
 
-```
-## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
-```
+    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-13-6.png)<!-- -->
-
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-13-6.png)<!-- -->
 
 # Use heatmap information to determine OB symmetry line
-Should be slanted across the OB moving more laterally as it moves more posterior
 
-```r
+Should be slanted across the OB moving more laterally as it moves more
+posterior
+
+``` r
 #hmm im not really seeing what i expect
 #basically says an ML plane ~13 is the symmetry line
 #SymLiner(m46710mergeV_voxnormsort, m91214mergeV_voxnormsort, m81116mergeV_voxnormsort, out="plot")
@@ -2487,9 +2456,9 @@ ggplot() +
   ylab("Mean position of top 2 ML peaks")
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-14-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
-```r
+``` r
 apvals <- c(1:28)
 mlvals <- vector(length = length(apvals), mode = "numeric")
 for (i in 1:length(apvals)) {
@@ -2511,10 +2480,9 @@ write_csv(symline, "~/Desktop/obmap/r_analysis/heatmaps/output/symline.csv")
 #or i could be discounting ORs whose glomeruli lie very close the symmetry line in the ML dim since AntPeakPostPeak function has a minimum distance of separation
 ```
 
+# Make OR feature plots
 
-# Make OR feature plots 
-
-```r
+``` r
 #m46710_voxsort is AP
 #m81116_voxsort is ML
 #m91214_voxsort is VD
@@ -2524,21 +2492,21 @@ vd_feats <- PlotFeatures(m91214_voxsort, title = "VD Features")
 ap_feats
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-1.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
-```r
+``` r
 vd_feats
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-2.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
 
-```r
+``` r
 ml_feats
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-3.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-3.png)<!-- -->
 
-```r
+``` r
 #FIsurface ORs
 ap_fi <- PlotFeatures(m46710_voxsort, title = "AP Features", featureOut = "fi")
 ml_fi <- PlotFeatures(m81116_voxsort, title = "ML Features", featureOut = "fi")
@@ -2546,25 +2514,25 @@ vd_fi <- PlotFeatures(m91214_voxsort, title = "VD Features", featureOut = "fi")
 ap_fi
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-4.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-4.png)<!-- -->
 
-```r
+``` r
 vd_fi
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-5.png)<!-- -->
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-5.png)<!-- -->
 
-```r
+``` r
 ml_fi
 ```
 
-![](ob_heatmaps_files/figure-html/unnamed-chunk-15-6.png)<!-- -->
-
+![](ob_heatmaps_files/figure-gfm/unnamed-chunk-15-6.png)<!-- -->
 
 # Get Peaks for all AP and ML dims in order to make mock 3D projection
+
 DV location comes from tanindex
 
-```r
+``` r
 ap_allreps <- MultiAPPP(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
                         "_ap4", "_ap6", "_ap7", "_ap10")
 # ap_first should be more lateral
@@ -2649,9 +2617,7 @@ heatmap_peaks <- bind_rows(lateral_join, medial_join) %>%
 write_csv(heatmap_peaks, "~/Desktop/obmap/r_analysis/heatmaps/output/heatmap_peaks.csv")
 ```
 
-
-
-```r
+``` r
 ap_vox <- m46710_voxsort %>% rename(AntPos = sortrank)
 vd_vox <- m91214_voxsort %>% rename(VenDor = sortrank)
 ml_vox <- m81116_voxsort %>% rename(MedLat = sortrank)
@@ -2660,7 +2626,4 @@ ranklist2 <- left_join(ranklist, ml_vox, by = "gene")
 write_csv(ranklist2, "~/Desktop/obmap/r_analysis/heatmaps/output/dim_ranklist_200912.csv")
 ```
 
-
-#legacy heatmap stuff 
-obmap excel norm, etc.
-
+\#legacy heatmap stuff obmap excel norm, etc.

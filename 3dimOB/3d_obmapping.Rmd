@@ -2,14 +2,24 @@
 title: "OBmap 3D"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: 
-  html_document: 
-    keep_md: true
+output: github_document
+always_allow_html: true
 ---
 # Goal:
-Changed directory organization and adding git VC
+Create a 3D reconstruction of single dimension targeted transcriptomics data in order to calculate the position (not necessarily a specific voxel but moreso a domain-like area) of an ORs two glomeruli.
 
-# Packages and user functions
+## Prior Steps:
+Input TPM data is gencode v25 aligned, RSEM quantified and merged using make_obmtx.Rmd file. Input voxels are based on MRI model which is transformed to 3D coordinates using mri_OB_cubed.Rmd file. Weights are calculated based on the number of voxels in that section for each dimension. Line of glomeruli mirror symmetry was calculated from two-peak AP and ML positions using ob_heatmaps.Rmd file. 
+
+## Plan:
+Use best 2 replicates (1 and 2) to generate the statistical model with 200 iterations (more iter will require running on server or adding more swap space).  Model involves ILR transform of dirichlet sampled TPM data which is then used to calculate Bayesian posterior probabilities for each OR in each voxel. p50 quantile value will be used to calculate most likely positions for each OR. To avoid picking a point that is an intersection of high expression sections in each dimension, a clustering function is used to determine high expression areas. A dorsal-ventral constraint function based on prior knowledge of an ORs position in the olfactory epithelium is combined with predicted OB positions in order to ensure 2 matching DV predictions if at least one predicted position matches with olfactory epithelium position.  
+
+# Future improvements:
+1. Better definition of dorsal-ventral zone based on OE data related to predicted position. 
+2. Define area of functional imaging using wachowiak functional imaging area enriched ORs.
+3. Annotate positions of Mombaerts ORs onto model and compare predicted positions and distances.
+
+# Packages and functions
 ```{r setup, message=F}
 knitr::opts_chunk$set(warning=F)
 library(MCMCpack)
@@ -107,7 +117,7 @@ p50plot <- function(olfr, rankx = 50, title = NA) {
     filter(rankp > rankx) %>% mutate(rankna = NA)
   plot_ly(type = "scatter3d", mode = "markers") %>% 
     add_trace(data=worstp50, x=~AntPos, y=~MedLat, z=~VenDor, 
-              color='rgb(10,10,10)', opacity=0.1,
+              color="shell", opacity=0.15,
               text = ~paste('Gene:', olfr, 
                             '<br>voxRankSNR:', voxRankSNR, 
                             '<br>voxSNRdim', voxSNRdim),
@@ -1402,6 +1412,7 @@ plot_ly(type = "scatter3d", mode = "markers") %>%
                       zaxis = list(title = 'Ventral-Dorsal')))
 ```
 
+
 ```{r}
 good_point %>% 
   group_by(olfrname) %>%
@@ -1500,9 +1511,3 @@ ahig_dist <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/heatmapORs_dista
 ahig_dist %>% ggplot(aes(side, distance)) + geom_violin()
 ```
 
-#TODO
-annotate positions of mombaerts 5OR mouse
-develop function that quantifies distance between plotbestML and assigned positions of mombORs
-define coordinates functional imaging surface 
-define coordinates of zone boundaries
-develop function that quantifies for each OR, how many plotbestML gloms are in surface
