@@ -2,29 +2,30 @@
 title: "OBmap single cell style analysis"
 author: "kanazian"
 date: "Sep 24, 2020"
-output: 
-  html_document: 
-    keep_md: true
+output: github_document
+always_allow_html: true
 ---
 # Goal: 
-Perform scRNAseq cluster DiffE style analysis on replicates of single dimension OBmap data to examine gene differential expression between positional clusters and dimensional reduction for positional samples. Following: https://bioconductor.org/packages/release/bioc/vignettes/SC3/inst/doc/SC3.html#de-genes
+Using positions from single dimensions as clusters, perform scRNAseq cluster analysis to examine gene differential expression between positional clusters and dimensional reduction for positional samples. Following: https://bioconductor.org/packages/release/bioc/vignettes/SC3/inst/doc/SC3.html#de-genes
 
 ## Prep tpm data for sc3
-```{r setup, include=FALSE}
+```{r setup, warning=F, message=F}
 library(SC3)
 library(SingleCellExperiment)
 library(scater)
 library(plotly)
 library(tidyverse)
 library(cowplot)
+library(knitr)
+library(patchwork)
 
-allchemo_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv") %>% select(-X1)
+allchemo_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv") %>% select(-X1) %>% filter(name != "M14S23")
 
 set.seed(711)
 ```
 
 
-#Prep single cell experiment
+# Prep single cell experiment
 ```{r}
 allchemo_dim <- allchemo_tpm %>% filter(dim == "AntPos")
 sample_names <- allchemo_dim$name
@@ -50,7 +51,7 @@ rowData(sce)$feature_symbol <- rownames(sce)
 ```
 
 
-#visualize dimreduction of the ~24 AP slices
+# visualize dimreduction of the ~24 AP slices
 ```{r}
 sce_pca <- runPCA(sce)
 plotPCA(sce_pca, colour_by = "cell_type1")
@@ -70,16 +71,107 @@ umap_tibble <- tibble(name = rownames(reducedDim(sce_umap)),
 umapplot <- ggplot(umap_tibble) + 
   geom_point(aes(UMAP_1, UMAP_2, fill = slice),
              size = 6, pch = 21, color = "black") +
+  scale_shape_manual(values=c(0, 1, 2)) +
   scale_fill_viridis_c() +
   theme_cowplot() +
   ggtitle("UMAP of OR Gene Expression", 
           subtitle = paste0(as.character(dim(allchemo_trim)[2]), 
-                            " Anterior-Posterior sections from 6 mice"))
-ggsave(umapplot, filename = "~/Desktop/obmap/r_analysis/sc_style/output/ap_umap.png", device = "png")
-umapplot
+                            " Anterior-Posterior sections from 12 mice")) + 
+  theme(legend.position = "none") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+
+#ggsave(umapplot, filename = "~/Desktop/obmap/r_analysis/sc_style/output/ap_umap.png", device = "png")
 
 sce_umapcomp <- runUMAP(sce, ncomponents = 5)
 plotUMAP(sce_umapcomp, ncomponents = 5, colour_by = "cell_type1")
+```
+
+# umap for all dims
+```{r}
+alldim <- allchemo_tpm
+ad_sample_names <- alldim$name
+ad_covars <- alldim %>% select(name:dimrep)
+
+ad_trim <- alldim %>% select(-name, -rep, -slice, -dim, -dimrep) %>% t()
+colnames(ad_trim) <- ad_sample_names
+ad_trim[1:5,1:5]
+
+adcoldata <- ad_covars %>% select(name, slice)
+ad_coldata_ac <- data.frame("cell_type1" = adcoldata$slice)
+rownames(ad_coldata_ac) <- adcoldata$name
+
+ad_sce <- SingleCellExperiment(
+    assays = list(
+        counts = as.matrix(ad_trim),
+        logcounts = log2(as.matrix(ad_trim) + 1)
+    ), 
+    colData = ad_coldata_ac
+)
+
+rowData(ad_sce)$feature_symbol <- rownames(ad_sce)
+
+ad_umap <- runUMAP(ad_sce)
+ad_umap_rd <- reducedDim(ad_umap) %>% as_tibble()
+ad_tibble <- tibble(name = rownames(reducedDim(ad_umap)), 
+                      UMAP_1 = ad_umap_rd$V1, UMAP_2 = ad_umap_rd$V2) %>%
+  left_join(ad_covars, by = "name") %>%
+  mutate(slice_fct = as_factor(slice))
+
+ad_umap_plot <- ggplot(ad_tibble) + 
+  geom_point(aes(UMAP_1, UMAP_2, fill = slice),
+             size = 6, pch = 21, color = "black") +
+  scale_shape_manual(values=c(0, 1, 2)) +
+  scale_fill_viridis_c() +
+  theme_cowplot() +
+  ggtitle("UMAP of OR Gene Expression", 
+          subtitle = paste0(as.character(dim(ad_trim)[2]), 
+                            " alldim sections from 12 mice")) + 
+  theme(legend.position = "none") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+
+ad_facets <- ggplot(ad_tibble) + 
+  geom_point(aes(UMAP_1, UMAP_2, fill = slice),
+             size = 6, pch = 21, color = "black") +
+  facet_wrap(~ dim) +
+  scale_shape_manual(values=c(0, 1, 2)) +
+  scale_fill_viridis_c() +
+  theme_cowplot() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+
+alldimplots <- ad_umap_plot / ad_facets
+ad_umap_plot
+ad_facets
+#ggsave(alldimplots, filename = "~/Desktop/obmap/r_analysis/sc_style/alldim_umap.png", device = "png")
+```
+
+
+## previously run UMAP for AP dimension
+Very ordered set of points reflects the distinct nature of OR positions along the AP axis with the 2 glomeruli positioned in approximately located sections.
+```{r, out.width = "50%", out.height = "50%"}
+include_graphics("AP_umap.png")
+```
+
+
+## previously run UMAP for ML dimension
+Lack of order is expected as the 2 glomeruli per OR can be located in very far apart or very close sections based on distance to mirror symmetry line that separates the ML dimension.
+```{r, out.width = "50%", out.height = "50%"}
+include_graphics("ML_umap.png")
+```
+
+
+## previously run UMAP for VD dimension
+Order is expected as both glomeruli should be located in the same VD section since OB position is related to OE position
+```{r, out.width = "50%", out.height = "50%"}
+include_graphics("VD_umap.png")
+```
+
+
+## previously run UMAP for all dimension
+```{r, include=F, out.width = "50%", out.height = "50%"}
+include_graphics("alldim_umap.png")
 ```
 
 
