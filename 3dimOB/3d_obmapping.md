@@ -33,15 +33,6 @@ olfactory epithelium is combined with predicted OB positions in order to
 ensure 2 matching DV predictions if at least one predicted position
 matches with olfactory epithelium position.
 
-# Future improvements:
-
-1.  Better definition of dorsal-ventral zone based on OE data related to
-    predicted position.
-2.  Define area of functional imaging using wachowiak functional imaging
-    area enriched ORs.
-3.  Annotate positions of Mombaerts ORs onto model and compare predicted
-    positions and distances.
-
 # Packages and functions
 
 ``` r
@@ -436,7 +427,8 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
 
 #run Cluster and check if either top ranked M or L glom is dorsal and has known dorsal expression or is class 1. If True, find a dorsal glom for both M and L
 DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
-                     clustIn = 5, clustOut = 1, chooseOut = "plot") {
+                     clustIn = 5, clustOut = 1, chooseOut = "plot",
+                     title = NA) {
   print(olfr)
   clustFound <- 0
   topStep <- topMin
@@ -458,6 +450,7 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
       mutate(dorsalRating = sum(ifelse(class == 1, 2, 0), 
                                 ifelse(tzsimple < 2, 1, 0),
                                 ifelse(oe_region == "Dorsal", 1, 0),
+                                ifelse(str_detect(olfrname, "Olfr"), 0, 2),
                                 na.rm = T)) %>%
       ungroup()
     
@@ -983,14 +976,14 @@ positions
 kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv", col_names = TRUE) %>% select(-X1) %>% filter(dimrep == 1 | dimrep == 2)
 ```
 
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   .default = col_double(),
     ##   name = col_character(),
     ##   dim = col_character()
     ## )
-
-    ## See spec(...) for full column specifications.
+    ## ℹ Use `spec()` for the full column specifications.
 
 ``` r
 ectopic <- c("Olfr287","Olfr32")
@@ -1040,7 +1033,8 @@ info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", c
   select(olfrname:RTP, known, lowTPM)
 ```
 
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   .default = col_double(),
     ##   gene = col_character(),
@@ -1057,7 +1051,7 @@ info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", c
     ##   known = col_logical(),
     ##   lowTPM = col_logical()
     ## )
-    ## See spec(...) for full column specifications.
+    ## ℹ Use `spec()` for the full column specifications.
 
 ``` r
 #line of bulb symmetry as found using single-dimension heatmap data
@@ -1065,7 +1059,8 @@ info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", c
 symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline.csv")
 ```
 
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   apvals = col_double(),
     ##   mlvals = col_double()
@@ -1094,7 +1089,8 @@ ggplot() +
 blankdata <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/blankOBcoords200922.csv")
 ```
 
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   AntPos = col_double(),
     ##   MedLat = col_double(),
@@ -1153,7 +1149,8 @@ plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor,
 orXor_cor <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/chemoVolfr_p50.csv")
 ```
 
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   olfrname = col_character(),
     ##   cor = col_double(),
@@ -1219,12 +1216,60 @@ voxel stand out from the average probability of its 3 dimensional slices
 ectopics whose high expression across the whole OB dominated the voxel
 probability for nearly all voxels. 72 is ~2.5% of total voxel positions
 and presents a robust visualization, meaning that increasing this number
-typically results in adding neighboring voxels.
+typically results in adding neighboring
+voxels.
+
+``` r
+Scat_rank("Olfr881", 72, title = "Olfr881 - Top 72 SnR voxels")
+```
+
+![](3d_obmapping_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+``` r
+Scat_rank("Olfr1377", 72, title = "Olfr1377 - Top 72 SnR voxels")
+```
+
+![](3d_obmapping_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
+
+``` r
+zapORs <- c("Olfr15", "Olfr16", "Olfr17", "Olfr155", "Olfr160", "Olfr1507")
+#other zapiec & mombaerts labeled ORs
+# Scat_rank("Olfr16",15)
+# Scat_rank("Olfr15", 15)
+# Scat_rank("Olfr17", 50)
+# Scat_rank("Olfr160", 15)
+# Scat_rank("Olfr155", 15)
+# Scat_rank("Olfr1507", 30)
+```
 
 ## Plot best X voxels based on raw p50 (probability)
 
 Using raw probability here, its pretty much the same as SNR after
-removing ectopics.
+removing
+ectopics.
+
+``` r
+#ranked %>% filter(olfrname == "Olfr160") %>% filter(MedLat < 3) %>% arrange(desc(p50)) %>% select(voxrankperOR, AntPos:VenDor)
+
+p50plot("Olfr881", 72, title = "Olfr881 - Top 72 probability voxels")
+```
+
+![](3d_obmapping_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+``` r
+p50plot("Olfr1377", 72, title = "Olfr1377 - Top 72 probability voxels")
+```
+
+![](3d_obmapping_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
+
+``` r
+# p50plot("Olfr16", 60)
+# p50plot("Olfr17", 70)
+# p50plot("Olfr15", 36)
+# p50plot("Olfr160", 36)
+# p50plot("Olfr155", 36)
+# p50plot("Olfr1507", 36)
+```
 
 ## Clustering top ranked points
 
@@ -1281,28 +1326,12 @@ BestML("Olfr1377", clustersPerHalfBulb = 1, title = "Olfr1377 - Highest Probabil
 # BestML("Olfr1507", clustersPerHalfBulb = 1)
 ```
 
-## Check if new Dorsal constraint function improves output
-
-New function checks if OR has evidence of dorsal OE expression (class 1,
-miyamichi zone \< 2, matsunami diffE = dorsal). If so, check if either
-the Medial or Lateral predicted position is dorsal. If OR is likely
-dorsal and either Medial or Lateral glomerulus prediction is dorsal but
-other halfbulb glom is not dorsal, find a dorsal glom for that halfbulb
-In independent images for the more lateral glomerulus, 1377 seems
-slightly more anterior lateral than 881
+## New Dorsal constraint function
 
 ``` r
-wachtg <- c("Olfr881", "Olfr1377")
-tgout <- ListDorML(wachtg, chooseOut = "data")
+DorsalML("Olfr881", title = "Olfr881 - OE constrained DV predictions")
 ```
 
-    ## [1] "Olfr881"
-    ## [1] "NA 100"
-    ## [1] "NA 300"
-    ## [1] 500
-    ## [1] 700
-    ## [1] "Olfr1377"
-    ## [1] 100
     ## [1] "Olfr881"
     ## [1] "NA 100"
     ## [1] "NA 200"
@@ -1311,426 +1340,34 @@ tgout <- ListDorML(wachtg, chooseOut = "data")
     ## [1] 500
     ## [1] 600
 
-``` r
-tgout
-```
-
-    ## # A tibble: 72 x 39
-    ##       p2.5     p50   p97.5 AntPos MedLat VenDor olfrname voxrankperOR
-    ##      <dbl>   <dbl>   <dbl>  <dbl>  <dbl>  <dbl> <chr>           <dbl>
-    ##  1 0.00645 0.00665 0.00695     14      1     15 Olfr881             6
-    ##  2 0.00583 0.00611 0.00644     11      1     15 Olfr881            11
-    ##  3 0.00515 0.00551 0.00592     12      1     15 Olfr881            14
-    ##  4 0.00476 0.00507 0.00544     14      1     16 Olfr881            18
-    ##  5 0.00428 0.00474 0.00522     14      1     14 Olfr881            26
-    ##  6 0.00428 0.00461 0.00491      9      1     16 Olfr881            29
-    ##  7 0.00425 0.00458 0.00489     11      1     16 Olfr881            32
-    ##  8 0.00408 0.00435 0.00462     11      1     17 Olfr881            40
-    ##  9 0.00411 0.00434 0.00465      9      1     17 Olfr881            41
-    ## 10 0.00387 0.00418 0.00457     12      1     16 Olfr881            46
-    ## # … with 62 more rows, and 31 more variables: ORrankpervox <dbl>,
-    ## #   rankofrank <int>, rawclust <int>, clustmaxp <dbl>, clustminp <dbl>,
-    ## #   clustmeanp <dbl>, n <int>, clustmaxprank <int>, clustmeanprank <int>,
-    ## #   clustsizerank <int>, clust_unique <int>, isCluster <dbl>, meanML <dbl>,
-    ## #   meanAP <dbl>, meanVD <dbl>, side <chr>, class <dbl>, tan_zone <chr>,
-    ## #   tzsimple <dbl>, oe_region <chr>, RTP <chr>, known <lgl>, lowTPM <lgl>,
-    ## #   dorsalRating <dbl>, MedRank <int>, LatRank <int>, TopStep <dbl>,
-    ## #   minSize <dbl>, clustIn <dbl>, sideRank <int>, test <chr>
-
-``` r
-tgplot <- tgout %>% filter(p50 == clustmaxp) %>% 
-  select(AntPos, MedLat, olfrname) %>% 
-  filter(AntPos > 10) %>% filter(MedLat > 10)
-blankout <- dvml_blank %>% select(AntPos:MedLat) %>% 
-  mutate(olfrname = "aaa") %>% unique()
-doubleout <- bind_rows(tgplot, blankout)
-
-ggplot(blankout) + geom_point(aes(AntPos, MedLat, color = olfrname), size = 3) +
-  geom_point(data = tgplot, aes(AntPos, MedLat, color = olfrname), size = 5) +
-  theme_cowplot() +
-  theme(legend.position = "none")
-```
-
 ![](3d_obmapping_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
 
 ``` r
-#DorsalML(wachtg)
+DorsalML("Olfr1377", title = "Olfr1377 - OE constrained DV predictions")
 ```
 
-# Find positions for 50 ORs enriched in Wachowiak Functional Imaging surface samples
+    ## [1] "Olfr1377"
+    ## [1] 100
 
-Shawn provided samples from 8 OBs from 4 mice, each OB cut into 2 pieces
-with 1 piece representing the functional imaging surface. Using the
-above algorithm for picking the best medial and lateral cluster for a
-given OR. Need to update list for newest alignment updates and to
-include all FI ORs now that code was improved in terms of
-speed.
+![](3d_obmapping_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
+
+# Make predicted positions for all genes
 
 ``` r
-olfr_result <- read_csv("~/Desktop/rproj/obmap_inactive/wach_diffe/starrsem_aligned/out/wach_v16model_top25FIenriched.csv") %>% mutate(Used1 = ifelse(Used == 1, 1, 0))
-
-func_sig <- olfr_result %>% filter(logFC > 0) %>% filter(FDR < 0.05) %>% mutate(pseudo = str_detect(Gene_name, "-ps")) %>% filter(pseudo == F) %>% arrange(FDR)
-func_sig_olfr <- func_sig$Gene_name
-func_sig_olfr
+genenames <- colnames(kzmY)
+length(genenames)
 ```
 
-    ##  [1] "Olfr376"  "Olfr629"  "Olfr57"   "Olfr1046" "Olfr1122" "Olfr937" 
-    ##  [7] "Olfr994"  "Olfr228"  "Olfr570"  "Olfr558"  "Olfr969"  "Olfr402" 
-    ## [13] "Olfr683"  "Olfr597"  "Olfr19"   "Olfr578"  "Olfr550"  "Olfr566" 
-    ## [19] "Olfr1496" "Olfr974"  "Olfr478"  "Olfr677"  "Olfr147"  "Olfr561" 
-    ## [25] "Olfr957"  "Olfr971"  "Olfr633"  "Olfr231"  "Olfr1032" "Olfr922" 
-    ## [31] "Olfr1023" "Olfr635"  "Olfr1031" "Olfr690"  "Olfr1010" "Olfr1019"
-    ## [37] "Olfr609"  "Olfr874"  "Olfr510"  "Olfr1134" "Olfr160"  "Olfr197" 
-    ## [43] "Olfr467"  "Olfr150"  "Olfr935"  "Olfr64"   "Olfr5"    "Olfr506" 
-    ## [49] "Olfr1377" "Olfr338"  "Olfr1086" "Olfr1020" "Olfr202"  "Olfr1339"
-    ## [55] "Olfr225"  "Olfr691"  "Olfr895"  "Olfr20"   "Olfr982"  "Olfr146" 
-    ## [61] "Olfr1328" "Olfr1129" "Olfr432"  "Olfr152"  "Olfr1449" "Olfr490" 
-    ## [67] "Olfr557"  "Olfr51"   "Olfr488"  "Olfr1448" "Olfr1154" "Olfr1128"
-    ## [73] "Olfr1511" "Olfr881"  "Olfr133"
+    ## [1] 1482
 
 ``` r
-ggplot(olfr_result) + 
-  geom_point(aes(logFC,-log10(FDR), alpha = 0.25, color = as.factor(Used1), size = 1.3)) +
-  geom_vline(xintercept = 0) + 
-  geom_hline(yintercept = -log10(0.05)) + 
-  theme_cowplot() + 
-  theme(legend.position = "none") + 
-  xlab("nonFIsurface  <<<  log2FoldChange  >>>  FIsurface")
+#out <- ListDorML(genenames, chooseOut = "data")
+#write_csv(out, "~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_dornonor_ldML_201012.csv")
+out <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_dornonor_ldML_201012.csv")
 ```
 
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
-
-# Plot 30 of the “best” FI surface ORs
-
-Best in this case refers to highestFDR (aka how consistency enriched in
-functional imaging surface). Perhaps color by an adjusted FDR?
-
-``` r
-#plot only highest p50 voxel of each cluster
-ListML(func_sig_olfr[1:30], chooseOut = "point", title = "Medial/Lateral cluster points for the top 30 FI surface enriched ORs")
-
-#new dorsal constraint function
-ListDorML(func_sig_olfr[1:30], chooseOut = "point", title = "DorFunc Medial/Lateral cluster points for the top 30 FI surface enriched ORs")
-```
-
-# Class 1 vs Class 2 positions
-
-Expect Class 1 OR positions to be primarily dorsal-anterior to
-dorsal-central. Filtered out some ORs based on max to mean TPM ratio
-lower than 10 (968 ORs remaining). These could be ORs that are poorly
-enriched/dropout or have non-traditional expression across the OB
-(requires closer investigation). A cutoff of 10 could be high but
-current runtime for 968 ORs is ~40mins, need to c++ the pairwise
-clustering or alter step based cluster finding.
-
-``` r
-#get summary statistics for each OR
-kzmY[1:5,1:5]
-```
-
-    ##         Olfr299 Olfr109 Olfr281 Olfr1015 Olfr1347
-    ## sample1    0.00    0.00    0.33     5.77      0.0
-    ## sample2  277.35    0.00  602.80   228.19      0.3
-    ## sample3    0.00   99.66 2451.54     0.11      0.0
-    ## sample4    0.00    0.00 1882.25   340.79      0.0
-    ## sample5    0.00    0.00 2612.72     0.00      0.0
-
-``` r
-max_tpm <- vector(mode = "numeric", length = ncol(kzmY))
-mean_tpm <- vector(mode = "numeric", length = ncol(kzmY))
-for (i in 1:ncol(kzmY)) {
-  max_tpm[i] <- max(kzmY[,i])
-  mean_tpm[i] <- mean(kzmY[,i])
-}
-ornames <- colnames(kzmY)
-
-#Removing 114 ORs whose max was less than 10 times that of their mean across all samples
-metrics <- tibble(ornames, max_tpm, mean_tpm) %>%
-  rowwise() %>%
-  mutate(max2mean = max_tpm/mean_tpm,
-         lowmax2mean = ifelse(max2mean < 10, T, F))
-
-goodORs <- metrics %>%
-  filter(lowmax2mean == F) %>%
-  select(ornames) %>%
-  as_vector() 
-length(goodORs) #972
-```
-
-    ## [1] 1242
-
-``` r
-#good_out <- ListDorML(goodORs, chooseOut = "data")
-#write_csv(good_out, "~/Desktop/obmap/r_analysis/3dimOB/output/goodchemo_ldML_200925.csv")
-good_out <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/goodchemo_ldML_200925.csv")
-
-#removed 4 ORs had NAs for class and oe_region
-good_point <- good_out %>% 
-  filter(p50 == clustmaxp) %>% 
-  select(olfrname, AntPos, VenDor, MedLat, class, oe_region, tzsimple, side) %>%
-  mutate(class_fct = as_factor(class)) %>%
-  filter(!is.na(class)) %>%
-  filter(!is.na(oe_region))
-
-write_csv(good_point, "~/Desktop/obmap/r_analysis/3dimOB/output/goodpointORs972_allchemo_listdorML_200820.csv")
-
-shell_point <- BestML("Olfr10", topMin = 100, topMax = 100, 
-                    topBy = 0, chooseOut = "notbest") %>%
-  select(olfrname, AntPos:VenDor) %>%
-  mutate(class_fct = NA,
-         oe_region = NA,
-         tzsimple = NA)
-
-#lets look at class 1 vs class 2 ORs, note that is it possible for a voxel to hold multiple OR cluster points
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.15,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6)) %>%
-  add_trace(data=good_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~class_fct,
-            text = ~paste('Gene: ', olfrname,
-                          '<br>Class: ', class,
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-  layout(title = "Class(1/2) of cluster points for 968 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
-
-``` r
-#a look at proportions to deal with point density
-class_props <- good_point %>% 
-  group_by(olfrname) %>%
-  mutate(VDmeanpos = round(mean(VenDor))) %>%
-  ungroup() %>%
-  mutate(isc1 = ifelse(class == 1, T, F)) %>%
-  group_by(VDmeanpos) %>%
-  summarise(count = n(),
-            proportion_class1 = sum(isc1)/count)
-
-class_props %>%
-  ggplot() + 
-  geom_bar(aes(VDmeanpos, proportion_class1), stat = "identity") + 
-  ggtitle("Proportion of Class 1 ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
-
-``` r
-#which class1 ORs are in ventral sections (VD < 8)
-c1ventral <- good_point %>%
-  filter(class == 1) %>%
-  filter(VenDor <= 8)
-```
-
-# OE region positions (zonal expression of OR as determined by Matsunami Lab DiffE)
-
-3 samples of dorsal OE vs 3 samples of ventral OE Could also examine
-relation to more discrete tan et al. zone indices but this is more
-readable.
-
-``` r
-#matsunami diffe oe
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.15,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6)) %>%
-  add_trace(data=good_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~oe_region,
-            text = ~paste('Gene: ', olfrname,
-                          '<br>OE Zone: ', oe_region,
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-  layout(title = "OE Zone of cluster points for 968 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
-
-``` r
-#a look at proportions to deal with point density
-good_point %>% 
-  group_by(olfrname) %>%
-  mutate(VDmeanpos = round(mean(VenDor))) %>%
-  ungroup() %>%
-  mutate(isdor = ifelse(oe_region == "Dorsal", T, F)) %>%
-  group_by(VDmeanpos) %>%
-  summarise(count = n(),
-            proportion_dorsal = sum(isdor)/count) %>%
-  ggplot() + 
-  geom_bar(aes(VDmeanpos, proportion_dorsal), stat = "identity") + 
-  ggtitle("Proportion of Dorsal OE Zone ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-12-2.png)<!-- -->
-
-``` r
-tan_point <- good_point %>%
-  mutate(tzsimplest = ifelse(tzsimple <= 5, 6- tzsimple, NA)) %>%
-  filter(!is.na(tzsimplest))
-
-#tanzone
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.15,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6)) %>%
-  add_trace(data=tan_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~tzsimplest,
-            text = ~paste('Gene: ', olfrname,
-                          '<br>Tan Zone: ', tzsimple,
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-  layout(title = "Tan Zone of cluster points for 968 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-12-3.png)<!-- -->
-
-``` r
-#Mayra/Antonio/Luis topics
-topics <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/ORsDegreesOfBelonging.csv") %>% rename(olfrname = X1)
-
-topic_point <- good_point %>% 
-  left_join(topics, by = "olfrname") %>%
-  filter(!is.na(maxTopic)) %>%
-  mutate(maxTopicFct = as_factor(maxTopic))
-
-#1 is all over
-#2 is dorsal, class 1 enriched (67 class 1 ORs, 99 class 2 ORs)
-#3 is ventral
-#4 is only 1 Olfr338, dorsal
-#5 is posterior
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.15,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6)) %>%
-  add_trace(data=topic_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~maxTopicFct,
-            text = ~paste('Gene: ', olfrname,
-                          '<br>Tan Zone: ', tzsimple,
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-  layout(title = "MaxTopic of cluster points for 583 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-12-4.png)<!-- -->
-
-``` r
-#visualize topic 1 ORs, color indicates % belonging
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.15,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6)) %>%
-  add_trace(data=topic_point %>% filter(maxTopicFct == 1), x=~AntPos, y=~MedLat, z=~VenDor, color=~T1,
-            text = ~paste('Gene: ', olfrname,
-                          '<br>Tan Zone: ', tzsimple,
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-  layout(title = "% Belonging Topic1 of cluster points for 583 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-12-5.png)<!-- -->
-
-``` r
-good_point %>% 
-  group_by(olfrname) %>%
-  mutate(VDmeanpos = round(mean(VenDor))) %>%
-  ungroup() %>%
-  mutate(isdor = ifelse(oe_region == "Dorsal", T, F)) %>%
-  group_by(VDmeanpos) %>%
-  summarise(count = n(),
-            proportion_dorsal = sum(isdor)/count) %>%
-  ggplot() + 
-  geom_bar(aes(VDmeanpos, proportion_dorsal), stat = "identity") +
-  coord_flip() +
-  theme_cowplot()
-```
-
-    ## `summarise()` ungrouping output (override with `.groups` argument)
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
-
-``` r
-#tanzone
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-  add_trace(data=shell_point, x=~AntPos, y=~MedLat, z=~VenDor, 
-            color="shell", opacity=0.1,
-            text = ~paste('Gene: ', olfrname, 
-                          '<br>AntPos: ', AntPos, 
-                          '<br>MedLat: ', MedLat,
-                          '<br>VenDor: ', VenDor),
-            marker = list(size = 6),
-            hoverinfo = "none",
-            hovertext = "none") %>%
-  add_trace(data=tan_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~tzsimplest,
-            marker = list(size = 8, line = list(color = 'black', width = 0.25)),
-            hovertext = "none",
-            hoverinfo = "none") %>%
-  layout(title = "Tan Zone of cluster points for 968 ORs",
-         scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                      yaxis = list(title = 'Medial-Lateral'),
-                      zaxis = list(title = 'Ventral-Dorsal')))
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
-
-# Plot the 28 ORs enriched by 1% methyl-acetophenone
-
-Color indicates logFC (pS6 strength of activity) Enriched defined as FDR
-\< 0.05 and logFC \> 1 pS6IP done by Maira. Control files are average no
-odor control metafiles (kevin 2020-04-23 created from starrsem of
-kzlabref).
-
-## Would be happy to create 2D plots or plot additional odors that Matt has imaged and we have corresponding pS6 data for if Hiro can identify shared odorants in both datasets.
-
-# plot heatmap peaks and calc dist to DorML
-
-``` r
-heatmap_peaks <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/heatmap_peaks.csv")
-```
-
-    ## Parsed with column specification:
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
     ## cols(
     ##   .default = col_double(),
     ##   olfrname = col_character(),
@@ -1739,35 +1376,7 @@ heatmap_peaks <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/heatmap_peaks
     ##   oe_region = col_character(),
     ##   RTP = col_character(),
     ##   known = col_logical(),
-    ##   lowTPM = col_logical()
+    ##   lowTPM = col_logical(),
+    ##   test = col_character()
     ## )
-
-    ## See spec(...) for full column specifications.
-
-``` r
-Heat3D("Olfr881", dimrep = 1, dv = "oe", raw = F, chooseOut = "plot")
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
-
-``` r
-all_heat_in_good <- heatmap_peaks$olfrname[which(heatmap_peaks$olfrname %in% good_point$olfrname)]
-#ahig_dist <- DistHeat3D(all_heat_in_good)
-#write_csv(ahig_dist, "~/Desktop/rproj/obmap/allmice/v21_gen25/heatmapORs_distance_to3D.csv")
-ahig_dist <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/heatmapORs_distance_to3D.csv")
-```
-
-    ## Parsed with column specification:
-    ## cols(
-    ##   olfrname = col_character(),
-    ##   side = col_character(),
-    ##   distance = col_double(),
-    ##   ap_ml_vd_3d = col_character(),
-    ##   ap_ml_vd_heat = col_character()
-    ## )
-
-``` r
-ahig_dist %>% ggplot(aes(side, distance)) + geom_violin()
-```
-
-![](3d_obmapping_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
+    ## ℹ Use `spec()` for the full column specifications.
