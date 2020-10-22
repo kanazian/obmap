@@ -2,7 +2,7 @@
 title: "OBmap 3D"
 author: "kanazian"
 date: "Sep 28, 2020"
-output: github_document
+output: html_document
 always_allow_html: true
 ---
 # Goal:
@@ -106,7 +106,7 @@ Scat_rank <- function(olfr, topX = 72, chooseOut = "plot", title = NA) {
 p50plot <- function(olfr, rankx = 50, title = NA) {
   bestp50 <- ranked %>% 
     filter(olfrname == olfr) %>% 
-    mutate(rankp1 = min_rank(p50), rankp = min_rank(desc(rankp1))) %>% filter(rankp <= rankx)
+    mutate(rankp = min_rank(desc(p50))) %>% filter(rankp <= rankx)
   worstp50 <- ranked %>% 
     filter(olfrname == olfr) %>% mutate(rankp = min_rank(p50)) %>% 
     filter(rankp > rankx) %>% mutate(rankna = NA)
@@ -130,6 +130,7 @@ p50plot <- function(olfr, rankx = 50, title = NA) {
 
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
+#why the hell am i ranking just to rerank with desc???
 Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", title = NA) {
   df <- ranked %>% 
     filter(olfrname == olfr) %>% 

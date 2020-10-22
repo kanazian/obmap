@@ -1,8 +1,8 @@
 ---
 title: "3D_prediction_analysis"
 author: "kanazian"
-date: "Oct 20 2020"
-output: github_document
+date: "Oct 20, 2020"
+output: html_document
 always_allow_html: true
 ---
 
@@ -946,9 +946,134 @@ ggplot(oe_props) +
 # Tan zone indexes
 ```{r}
 filter_preds <- filter_preds %>% 
-  mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA)) %>%
+  mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA),
+         tzbins = round(tzsimplest/0.5)) %>%
   filter(!is.na(tzsimplest))
 Plot_predictions(filter_olfrs, varcolor = ~tzsimplest)
+Plot_predictions(filter_olfrs, varcolor = ~tzbins)
+
+#predictions for medial vs lateral are probably something good to discuss in paper
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Medial") %>%
+  ggplot() +
+  geom_jitter(aes(tzbins, VenDor)) +
+  geom_smooth(aes(tzbins, VenDor)) +
+  ggtitle("Medial points - tan and prediction position")
+
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Lateral") %>%
+  ggplot() +
+  geom_jitter(aes(tzbins, VenDor)) +
+  geom_smooth(aes(tzbins, VenDor)) +
+  ggtitle("Lateral points - tan and prediction position")
+
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Lateral") %>%
+  ggplot() +
+  geom_boxplot(aes(as_factor(tzbins), VenDor)) +
+  ggtitle("Lateral points - tan and prediction position")
+
+#https://stackoverflow.com/questions/49215193/r-error-cant-join-on-because-of-incompatible-types
+matchColClasses <- function(df1, df2) {
+
+  sharedColNames <- names(df1)[names(df1) %in% names(df2)]
+  sharedColTypes <- sapply(df1[,sharedColNames], class)
+
+  for (n in sharedColNames) {
+     class(df2[, n]) <- sharedColTypes[n]
+  }
+
+  return(df2)
+}
+
+
+#make tib of most ventral and most dorsal outliers for each binval, check if p50 values are outliers for groups 
+for (i in min(filter_preds$tzbins):max(filter_preds$tzbins)) {
+  filtered_lat <- filter_preds %>%
+    filter(p50 == clustmaxp) %>%
+    filter(side == "Lateral") %>%
+    filter(tzbins == i) %>%
+    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
+           checkdor = ifelse(vdrank <= 10, 100, 0),
+           checkven = ifelse(vdrank > (max(vdrank) - 10), 10, 0),
+           checkmid = ifelse(vdrank == median(vdrank), 1, 0)) %>%
+    rowwise() %>%
+    mutate(pack = checkdor + checkven + checkmid) %>%
+    ungroup() %>%
+    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
+    filter(pack > 0)
+  
+  filtered_med <- filter_preds %>%
+    filter(p50 == clustmaxp) %>%
+    filter(side == "Medial") %>%
+    filter(tzbins == i) %>%
+    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
+           checkdor = ifelse(vdrank <= 10, 100, 0),
+           checkven = ifelse(vdrank > (max(vdrank) - 10), 10, 0),
+           checkmid = ifelse(vdrank == median(vdrank), 1, 0)) %>%
+    rowwise() %>%
+    mutate(pack = checkdor + checkven + checkmid) %>%
+    ungroup() %>%
+    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
+    filter(pack > 0)
+  
+  filtered_both <- bind_rows(filtered_lat, filtered_med)
+  
+  if (i == min(filter_preds$tzbins)) {
+    outliers <- filtered_both
+  } else if (i == max(filter_preds$tzbins)) {
+    outliers <- bind_rows(outliers, filtered_both) %>%
+      mutate(type = ifelse(pack == 100, "dor",
+                           ifelse(pack == 10, "ven",
+                                  ifelse(pack == 1, "mid", "woops"))))
+  } else if (i == 3) {
+    #seems that tzbin 3 holds only 10 OR points total for both med and lat sides
+    filtered_lat <- filter_preds %>%
+    filter(p50 == clustmaxp) %>%
+    filter(side == "Lateral") %>%
+    filter(tzbins == i) %>%
+    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
+           checkdor = ifelse(vdrank <= 3, 100, 0),
+           checkven = ifelse(vdrank > (max(vdrank) - 3), 10, 0),
+           checkmid = ifelse(between(vdrank, median(vdrank) - 1.9, median(vdrank) + 1.9), 1, 0)) %>%
+    rowwise() %>%
+    mutate(pack = checkdor + checkven + checkmid) %>%
+    ungroup() %>%
+    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
+    filter(pack > 0)
+  
+  filtered_med <- filter_preds %>%
+    filter(p50 == clustmaxp) %>%
+    filter(side == "Medial") %>%
+    filter(tzbins == i) %>%
+    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
+           checkdor = ifelse(vdrank <= 3, 100, 0),
+           checkven = ifelse(vdrank > (max(vdrank) - 3), 10, 0),
+           checkmid = ifelse(between(vdrank, median(vdrank) - 1.9, median(vdrank) + 1.9), 1, 0)) %>%
+    rowwise() %>%
+    mutate(pack = checkdor + checkven + checkmid) %>%
+    ungroup() %>%
+    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
+    filter(pack > 0)
+  
+  filtered_both <- bind_rows(filtered_lat, filtered_med)
+  outliers <- bind_rows(outliers, filtered_both)
+  } else  {
+    outliers <- bind_rows(outliers, filtered_both)
+  }
+}
+
+outliers %>% 
+  filter(side == "Lateral") %>% 
+  group_by(tzbins, type) %>% 
+  summarise(avgp50 = mean(p50)) %>% 
+  ggplot() + 
+  geom_point(aes(type, avgp50)) +
+  facet_wrap(~ tzbins)
+
 ```
 
 
@@ -963,6 +1088,18 @@ filter_preds <- filter_preds %>%
   left_join(ls_idx, by = "olfrname")
 
 Plot_predictions(filter_olfrs, varcolor = ~rankDPT)
+
+test <- filter_preds %>%
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Medial") %>%
+  filter(tzbins == 2) %>%
+  mutate(vdrank = min_rank(desc(VenDor)),
+         pack = ifelse(vdrank <= 10, "dorsal", 
+                       ifelse(vdrank > (max(vdrank) - 10), "ventral", 
+                              ifelse(between(vdrank, (mean(vdrank) - 5), (mean(vdrank) + 5)),
+                                     "mid", NA)))) %>%
+  select(olfrname, side, VenDor, tzsimple, tzbins, p50, pack) %>%
+  filter(!is.na(pack))
 ```
 
 
