@@ -1,8 +1,8 @@
 ---
-title: "3D_prediction_analysis"
+title: "Analysis of 3D predictions"
 author: "kanazian"
-date: "Oct 20, 2020"
-output: html_document
+date: "Oct 25, 2020"
+output: github_document
 always_allow_html: true
 ---
 
@@ -19,8 +19,22 @@ knitr::opts_chunk$set(warning=F)
 library(plotly) 
 library(tidyverse)
 library(cowplot)
+library(patchwork)
 
 # functions -----------------------------------------------------------
+#https://stackoverflow.com/questions/49215193/r-error-cant-join-on-because-of-incompatible-types
+MatchColClasses <- function(df1, df2) {
+
+  sharedColNames <- names(df1)[names(df1) %in% names(df2)]
+  sharedColTypes <- sapply(df1[,sharedColNames], class)
+
+  for (n in sharedColNames) {
+     class(df2[, n]) <- sharedColTypes[n]
+  }
+
+  return(df2)
+}
+
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
 Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", title = NA) {
@@ -951,7 +965,10 @@ filter_preds <- filter_preds %>%
   filter(!is.na(tzsimplest))
 Plot_predictions(filter_olfrs, varcolor = ~tzsimplest)
 Plot_predictions(filter_olfrs, varcolor = ~tzbins)
+```
 
+
+```{r}
 #predictions for medial vs lateral are probably something good to discuss in paper
 filter_preds %>% 
   filter(p50 == clustmaxp) %>%
@@ -975,119 +992,151 @@ filter_preds %>%
   ggplot() +
   geom_boxplot(aes(as_factor(tzbins), VenDor)) +
   ggtitle("Lateral points - tan and prediction position")
-
-#https://stackoverflow.com/questions/49215193/r-error-cant-join-on-because-of-incompatible-types
-matchColClasses <- function(df1, df2) {
-
-  sharedColNames <- names(df1)[names(df1) %in% names(df2)]
-  sharedColTypes <- sapply(df1[,sharedColNames], class)
-
-  for (n in sharedColNames) {
-     class(df2[, n]) <- sharedColTypes[n]
-  }
-
-  return(df2)
-}
+```
 
 
-#make tib of most ventral and most dorsal outliers for each binval, check if p50 values are outliers for groups 
-for (i in min(filter_preds$tzbins):max(filter_preds$tzbins)) {
-  filtered_lat <- filter_preds %>%
-    filter(p50 == clustmaxp) %>%
-    filter(side == "Lateral") %>%
-    filter(tzbins == i) %>%
-    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
-           checkdor = ifelse(vdrank <= 10, 100, 0),
-           checkven = ifelse(vdrank > (max(vdrank) - 10), 10, 0),
-           checkmid = ifelse(vdrank == median(vdrank), 1, 0)) %>%
-    rowwise() %>%
-    mutate(pack = checkdor + checkven + checkmid) %>%
-    ungroup() %>%
-    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
-    filter(pack > 0)
-  
-  filtered_med <- filter_preds %>%
-    filter(p50 == clustmaxp) %>%
-    filter(side == "Medial") %>%
-    filter(tzbins == i) %>%
-    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
-           checkdor = ifelse(vdrank <= 10, 100, 0),
-           checkven = ifelse(vdrank > (max(vdrank) - 10), 10, 0),
-           checkmid = ifelse(vdrank == median(vdrank), 1, 0)) %>%
-    rowwise() %>%
-    mutate(pack = checkdor + checkven + checkmid) %>%
-    ungroup() %>%
-    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
-    filter(pack > 0)
-  
-  filtered_both <- bind_rows(filtered_lat, filtered_med)
-  
-  if (i == min(filter_preds$tzbins)) {
-    outliers <- filtered_both
-  } else if (i == max(filter_preds$tzbins)) {
-    outliers <- bind_rows(outliers, filtered_both) %>%
-      mutate(type = ifelse(pack == 100, "dor",
-                           ifelse(pack == 10, "ven",
-                                  ifelse(pack == 1, "mid", "woops"))))
-  } else if (i == 3) {
-    #seems that tzbin 3 holds only 10 OR points total for both med and lat sides
+```{r}
+#find outliers in terms of DV voxel and DV index (tan, luis, etc.) relationship (outside of 1.645 SDs from mean or ~90%)
+#index is a colname, using {{colname}} to pass colname as function arg
+Find_DVoutliers <- function(index, sd_from_mean = 1.645) {
+  for (i in min(filter_preds$VenDor):max(filter_preds$VenDor)) {
     filtered_lat <- filter_preds %>%
-    filter(p50 == clustmaxp) %>%
-    filter(side == "Lateral") %>%
-    filter(tzbins == i) %>%
-    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
-           checkdor = ifelse(vdrank <= 3, 100, 0),
-           checkven = ifelse(vdrank > (max(vdrank) - 3), 10, 0),
-           checkmid = ifelse(between(vdrank, median(vdrank) - 1.9, median(vdrank) + 1.9), 1, 0)) %>%
-    rowwise() %>%
-    mutate(pack = checkdor + checkven + checkmid) %>%
-    ungroup() %>%
-    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
-    filter(pack > 0)
-  
-  filtered_med <- filter_preds %>%
-    filter(p50 == clustmaxp) %>%
-    filter(side == "Medial") %>%
-    filter(tzbins == i) %>%
-    mutate(vdrank = rank(desc(VenDor), ties.method = "random"),
-           checkdor = ifelse(vdrank <= 3, 100, 0),
-           checkven = ifelse(vdrank > (max(vdrank) - 3), 10, 0),
-           checkmid = ifelse(between(vdrank, median(vdrank) - 1.9, median(vdrank) + 1.9), 1, 0)) %>%
-    rowwise() %>%
-    mutate(pack = checkdor + checkven + checkmid) %>%
-    ungroup() %>%
-    select(olfrname, side, VenDor, tzsimple, tzbins, p50, vdrank, pack) %>%
-    filter(pack > 0)
-  
-  filtered_both <- bind_rows(filtered_lat, filtered_med)
-  outliers <- bind_rows(outliers, filtered_both)
-  } else  {
-    outliers <- bind_rows(outliers, filtered_both)
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Lateral") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    lat_sum <- filtered_lat %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
+    lat_midsdlo <- lat_sum$avg_idx[1] - sd_from_mean * lat_sum$sd_idx[1]
+    lat_midsdhi <- lat_sum$avg_idx[1] + sd_from_mean *lat_sum$sd_idx[1]
+    filtered_lat <- filtered_lat %>%
+      mutate(checkhi = ifelse({{index}} > lat_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < lat_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, lat_midsdlo, lat_midsdhi), 5, 0),
+             barhi = lat_midsdhi,
+             barlo = lat_midsdlo,
+             barmid = lat_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    filtered_med <- filter_preds %>%
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Medial") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    med_sum <- filtered_med %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
+    med_midsdlo <- med_sum$avg_idx[1] - sd_from_mean * med_sum$sd_idx[1]
+    med_midsdhi <- med_sum$avg_idx[1] + sd_from_mean * med_sum$sd_idx[1]
+    filtered_med <- filtered_med %>%
+      mutate(checkhi = ifelse({{index}} > med_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < med_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, med_midsdlo, med_midsdhi), 5, 0),
+             barhi = med_midsdhi,
+             barlo = med_midsdlo,
+             barmid = med_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    both_latmed <- bind_rows(filtered_lat, filtered_med)
+    
+    #combine
+    if (i == max(filter_preds$VenDor)) {
+      filtered_all <- bind_rows(filtered_all, both_latmed) %>%
+        mutate(type = ifelse(pack == 500, "ahi",
+                             ifelse(pack == 50, "zlo",
+                                    ifelse(pack == 5, "mid", "woops"))))
+      return(filtered_all)
+    } else if (i == min(filter_preds$VenDor)) {
+      filtered_all <- both_latmed
+    } else {
+      filtered_all <- bind_rows(filtered_all, both_latmed)
+    }#endif
+  } #endfor
+} #endfunc
+
+#outliers of VD by bin is now outliers_tzbin_vd until close
+
+outliers <- Find_DVoutliers(tzsimplest, 1)
+
+Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
+  if(str_detect(tolower(chooseOut), "lat")) {
+    lat_indiv <- df %>%
+      filter(side == "Lateral") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Lateral predictions") +
+      theme(legend.position = "none")
+    
+    lat_groups <- df %>%
+      filter(side == "Lateral") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    lat_plots <- lat_indiv + lat_groups
+    return(lat_plots)
+  } else if (str_detect(tolower(chooseOut), "med")) {
+    med_indiv <- df %>%
+      filter(side == "Medial") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Medial predictions") +
+      theme(legend.position = "none")
+    
+    med_groups <- df %>%
+      filter(side == "Medial") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    med_plots <- med_indiv + med_groups
+    return(med_plots)
+  } else {
+    df_out <- df %>%
+      group_by(VenDor, side, type) %>%
+      mutate(avgp50 = mean(p50),
+             group_size = n()) %>%
+      ungroup() %>%
+      mutate()
+    return(df_out)
   }
 }
 
-outliers %>% 
-  filter(side == "Lateral") %>% 
-  group_by(tzbins, type) %>% 
-  summarise(avgp50 = mean(p50)) %>% 
-  ggplot() + 
-  geom_point(aes(type, avgp50)) +
-  facet_wrap(~ tzbins)
-
+Analyze_DVoutliers(outliers, tzsimplest, "med")
+Analyze_DVoutliers(outliers, tzsimplest, "lat")
 ```
 
 
 # DV indexes from Luis 3D OE project
 ```{r}
+#olfr1204 had a dpt of 0, changed to 1
 ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pred.csv") %>%
   mutate(logDPT = log2(DPT_index + 0.1),
          rankDPT = min_rank(DPT_index))
 
-filter_preds <- all_predictions
 filter_preds <- filter_preds %>%
   left_join(ls_idx, by = "olfrname")
 
-Plot_predictions(filter_olfrs, varcolor = ~rankDPT)
+Plot_predictions(filter_olfrs, varcolor = ~logDPT)
 
 test <- filter_preds %>%
   filter(p50 == clustmaxp) %>%
@@ -1175,7 +1224,7 @@ Plot_predictions(func_sig_olfr, varcolor=~p50, chooseOut = "point", title = "Med
 
 
 # plot heatmap peaks and calc dist to DorML
-```{r}
+```{r, eval=F}
 heatmap_peaks <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/heatmap_peaks.csv")
 
 Heat3D("Olfr881", dimrep = 1, dv = "oe", raw = F, chooseOut = "plot")
@@ -1189,7 +1238,7 @@ ahig_dist %>% ggplot(aes(side, distance)) + geom_violin()
 
 
 ## Check if new Dorsal constraint function improves output
-New function checks if OR has evidence of dorsal OE expression (class 1, miyamichi zone < 2, matsunami diffE = dorsal). If so, check if either the Medial or Lateral predicted position is dorsal. If OR is likely dorsal and either Medial or Lateral glomerulus prediction is dorsal but other halfbulb glom is not dorsal, find a dorsal glom for that halfbulb
+New function checks if OR has evidence of dorsal OE expression (class 1 or miyamichi zone < 2, matsunami diffE = dorsal). If so, check if either the Medial or Lateral predicted position is dorsal. If OR is likely dorsal and either Medial or Lateral glomerulus prediction is dorsal but other halfbulb glom is not dorsal, find a dorsal glom for that halfbulb
 In independent images for the more lateral glomerulus, 1377 seems slightly more anterior lateral than 881
 ```{r, message=F, eval=F, include=F}
 wachtg <- c("Olfr881", "Olfr1377")

@@ -1,7 +1,7 @@
-3D\_prediction\_analysis
+Analysis of 3D predictions
 ================
 kanazian
-Oct 20 2020
+Oct 25, 2020
 
 # Goal:
 
@@ -24,8 +24,22 @@ knitr::opts_chunk$set(warning=F)
 library(plotly) 
 library(tidyverse)
 library(cowplot)
+library(patchwork)
 
 # functions -----------------------------------------------------------
+#https://stackoverflow.com/questions/49215193/r-error-cant-join-on-because-of-incompatible-types
+MatchColClasses <- function(df1, df2) {
+
+  sharedColNames <- names(df1)[names(df1) %in% names(df2)]
+  sharedColTypes <- sapply(df1[,sharedColNames], class)
+
+  for (n in sharedColNames) {
+     class(df2[, n]) <- sharedColTypes[n]
+  }
+
+  return(df2)
+}
+
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
 Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", title = NA) {
@@ -1076,16 +1090,205 @@ ggplot(oe_props) +
 
 ``` r
 filter_preds <- filter_preds %>% 
-  mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA)) %>%
+  mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA),
+         tzbins = round(tzsimplest/0.5)) %>%
   filter(!is.na(tzsimplest))
 Plot_predictions(filter_olfrs, varcolor = ~tzsimplest)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
+``` r
+Plot_predictions(filter_olfrs, varcolor = ~tzbins)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
+
+``` r
+#predictions for medial vs lateral are probably something good to discuss in paper
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Medial") %>%
+  ggplot() +
+  geom_jitter(aes(tzbins, VenDor)) +
+  geom_smooth(aes(tzbins, VenDor)) +
+  ggtitle("Medial points - tan and prediction position")
+```
+
+    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+``` r
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Lateral") %>%
+  ggplot() +
+  geom_jitter(aes(tzbins, VenDor)) +
+  geom_smooth(aes(tzbins, VenDor)) +
+  ggtitle("Lateral points - tan and prediction position")
+```
+
+    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
+
+``` r
+filter_preds %>% 
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Lateral") %>%
+  ggplot() +
+  geom_boxplot(aes(as_factor(tzbins), VenDor)) +
+  ggtitle("Lateral points - tan and prediction position")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-3.png)<!-- -->
+
+``` r
+#find outliers in terms of DV voxel and DV index (tan, luis, etc.) relationship (outside of 1.645 SDs from mean or ~90%)
+#index is a colname, using {{colname}} to pass colname as function arg
+Find_DVoutliers <- function(index, sd_from_mean = 1.645) {
+  for (i in min(filter_preds$VenDor):max(filter_preds$VenDor)) {
+    filtered_lat <- filter_preds %>%
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Lateral") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    lat_sum <- filtered_lat %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
+    lat_midsdlo <- lat_sum$avg_idx[1] - sd_from_mean * lat_sum$sd_idx[1]
+    lat_midsdhi <- lat_sum$avg_idx[1] + sd_from_mean *lat_sum$sd_idx[1]
+    filtered_lat <- filtered_lat %>%
+      mutate(checkhi = ifelse({{index}} > lat_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < lat_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, lat_midsdlo, lat_midsdhi), 5, 0),
+             barhi = lat_midsdhi,
+             barlo = lat_midsdlo,
+             barmid = lat_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    filtered_med <- filter_preds %>%
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Medial") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    med_sum <- filtered_med %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
+    med_midsdlo <- med_sum$avg_idx[1] - sd_from_mean * med_sum$sd_idx[1]
+    med_midsdhi <- med_sum$avg_idx[1] + sd_from_mean * med_sum$sd_idx[1]
+    filtered_med <- filtered_med %>%
+      mutate(checkhi = ifelse({{index}} > med_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < med_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, med_midsdlo, med_midsdhi), 5, 0),
+             barhi = med_midsdhi,
+             barlo = med_midsdlo,
+             barmid = med_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    both_latmed <- bind_rows(filtered_lat, filtered_med)
+    
+    #combine
+    if (i == max(filter_preds$VenDor)) {
+      filtered_all <- bind_rows(filtered_all, both_latmed) %>%
+        mutate(type = ifelse(pack == 500, "ahi",
+                             ifelse(pack == 50, "zlo",
+                                    ifelse(pack == 5, "mid", "woops"))))
+      return(filtered_all)
+    } else if (i == min(filter_preds$VenDor)) {
+      filtered_all <- both_latmed
+    } else {
+      filtered_all <- bind_rows(filtered_all, both_latmed)
+    }#endif
+  } #endfor
+} #endfunc
+
+#outliers of VD by bin is now outliers_tzbin_vd until close
+
+outliers <- Find_DVoutliers(tzsimplest, 1)
+
+Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
+  if(str_detect(tolower(chooseOut), "lat")) {
+    lat_indiv <- df %>%
+      filter(side == "Lateral") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Lateral predictions") +
+      theme(legend.position = "none")
+    
+    lat_groups <- df %>%
+      filter(side == "Lateral") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    lat_plots <- lat_indiv + lat_groups
+    return(lat_plots)
+  } else if (str_detect(tolower(chooseOut), "med")) {
+    med_indiv <- df %>%
+      filter(side == "Medial") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Medial predictions") +
+      theme(legend.position = "none")
+    
+    med_groups <- df %>%
+      filter(side == "Medial") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    med_plots <- med_indiv + med_groups
+    return(med_plots)
+  } else {
+    df_out <- df %>%
+      group_by(VenDor, side, type) %>%
+      mutate(avgp50 = mean(p50),
+             group_size = n()) %>%
+      ungroup() %>%
+      mutate()
+    return(df_out)
+  }
+}
+
+Analyze_DVoutliers(outliers, tzsimplest, "med")
+```
+
+    ## `summarise()` regrouping output by 'VenDor' (override with `.groups` argument)
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+Analyze_DVoutliers(outliers, tzsimplest, "lat")
+```
+
+    ## `summarise()` regrouping output by 'VenDor' (override with `.groups` argument)
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+
 # DV indexes from Luis 3D OE project
 
 ``` r
+#olfr1204 had a dpt of 0, changed to 1
 ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pred.csv") %>%
   mutate(logDPT = log2(DPT_index + 0.1),
          rankDPT = min_rank(DPT_index))
@@ -1106,14 +1309,27 @@ ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pr
     ## )
 
 ``` r
-filter_preds <- all_predictions
 filter_preds <- filter_preds %>%
   left_join(ls_idx, by = "olfrname")
 
-Plot_predictions(filter_olfrs, varcolor = ~rankDPT)
+Plot_predictions(filter_olfrs, varcolor = ~logDPT)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+``` r
+test <- filter_preds %>%
+  filter(p50 == clustmaxp) %>%
+  filter(side == "Medial") %>%
+  filter(tzbins == 2) %>%
+  mutate(vdrank = min_rank(desc(VenDor)),
+         pack = ifelse(vdrank <= 10, "dorsal", 
+                       ifelse(vdrank > (max(vdrank) - 10), "ventral", 
+                              ifelse(between(vdrank, (mean(vdrank) - 5), (mean(vdrank) + 5)),
+                                     "mid", NA)))) %>%
+  select(olfrname, side, VenDor, tzsimple, tzbins, p50, pack) %>%
+  filter(!is.na(pack))
+```
 
 # Topics from Luis 3D OE project
 
@@ -1158,7 +1374,7 @@ topic_ors <- filter_preds$olfrname
 Plot_predictions(topic_ors, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
 
 ``` r
 topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
@@ -1166,7 +1382,7 @@ topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
 Plot_predictions(topic_X, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
 
 ``` r
 #1 is all over
@@ -1220,7 +1436,7 @@ ggplot(olfr_result) +
   xlab("nonFIsurface  <<<  log2FoldChange  >>>  FIsurface")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 # Plot significantly enriched FI surface ORs
 
@@ -1232,63 +1448,28 @@ functional imaging surface). Perhaps color by an adjusted FDR?
 Plot_predictions(func_sig_olfr, varcolor=~p50, chooseOut = "point", title = "Medial/Lateral cluster points for the top 30 FI surface enriched ORs")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
 # plot heatmap peaks and calc dist to DorML
 
 ``` r
 heatmap_peaks <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/heatmap_peaks.csv")
-```
 
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   .default = col_double(),
-    ##   olfrname = col_character(),
-    ##   side = col_character(),
-    ##   tan_zone = col_character(),
-    ##   oe_region = col_character(),
-    ##   RTP = col_character(),
-    ##   known = col_logical(),
-    ##   lowTPM = col_logical()
-    ## )
-    ## ℹ Use `spec()` for the full column specifications.
-
-``` r
 Heat3D("Olfr881", dimrep = 1, dv = "oe", raw = F, chooseOut = "plot")
-```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
-
-``` r
 all_heat_in_good <- heatmap_peaks$olfrname[which(heatmap_peaks$olfrname %in% filter_olfrs)]
 #ahig_dist <- DistHeat3D(all_heat_in_good)
 #write_csv(ahig_dist, "~/Desktop/rproj/obmap/allmice/v21_gen25/heatmapORs_distance_to3D.csv")
 ahig_dist <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/heatmapORs_distance_to3D.csv")
-```
-
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   olfrname = col_character(),
-    ##   side = col_character(),
-    ##   distance = col_double(),
-    ##   ap_ml_vd_3d = col_character(),
-    ##   ap_ml_vd_heat = col_character()
-    ## )
-
-``` r
 ahig_dist %>% ggplot(aes(side, distance)) + geom_violin()
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-2.png)<!-- -->
-
 ## Check if new Dorsal constraint function improves output
 
-New function checks if OR has evidence of dorsal OE expression (class 1,
-miyamichi zone \< 2, matsunami diffE = dorsal). If so, check if either
-the Medial or Lateral predicted position is dorsal. If OR is likely
-dorsal and either Medial or Lateral glomerulus prediction is dorsal but
-other halfbulb glom is not dorsal, find a dorsal glom for that halfbulb
-In independent images for the more lateral glomerulus, 1377 seems
-slightly more anterior lateral than 881
+New function checks if OR has evidence of dorsal OE expression (class 1
+or miyamichi zone \< 2, matsunami diffE = dorsal). If so, check if
+either the Medial or Lateral predicted position is dorsal. If OR is
+likely dorsal and either Medial or Lateral glomerulus prediction is
+dorsal but other halfbulb glom is not dorsal, find a dorsal glom for
+that halfbulb In independent images for the more lateral glomerulus,
+1377 seems slightly more anterior lateral than 881
