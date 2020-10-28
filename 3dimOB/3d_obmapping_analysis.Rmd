@@ -2,7 +2,7 @@
 title: "Analysis of 3D predictions"
 author: "kanazian"
 date: "Oct 25, 2020"
-output: github_document
+output: html_document
 always_allow_html: true
 ---
 
@@ -1111,15 +1111,74 @@ Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
     med_plots <- med_indiv + med_groups
     return(med_plots)
   } else {
-    df_out <- df %>%
-      group_by(VenDor, side, type) %>%
-      mutate(avgp50 = mean(p50),
-             group_size = n()) %>%
+    type_stats <- df %>% 
+      group_by(VenDor, side, type) %>% 
+      summarise(type_p50 = mean(p50), 
+                type_hampel_lo = median(p50) - (3 *mad(p50))) %>% 
+      ungroup() %>% rowwise() %>% 
+      mutate(type_name = paste0(VenDor, side, type)) %>% 
+      select(type_name, group_p50, type_hampel_lo)
+    
+    mid_stats <- df %>% 
+      filter(type == "mid") %>% 
+      group_by(VenDor, side) %>% 
+      summarise(mid_p50 = mean(p50), 
+                mid_min = min(p50),
+                mid_1mad = mean(p50) - mad(p50),
+                mid_1sd = mean(p50) - sd(p50)) %>% 
+      ungroup() %>% rowwise() %>%
+      mutate(mid_name = paste0(VenDor, side)) %>% 
+      select(mid_name, mid_p50, mid_min, mid_1mad, mid_1sd)
+    
+    df_out <- df %>% 
+      group_by(VenDor) %>%
+      mutate(vd_p50 = mean(p50)) %>%
       ungroup() %>%
-      mutate()
+      mutate(type_name = paste0(VenDor, side, type), 
+             mid_name = paste0(VenDor, side)) %>% 
+      left_join(type_stats, by = "type_name") %>% 
+      left_join(mid_stats, by = "mid_name") %>%
+      mutate(out_below_mid = ifelse(type != "mid", ifelse(p50 < mid_p50, T, F), F),
+             out_below_midmin = ifelse(out_below_mid == T, ifelse(p50 < mid_min, T, F), F),
+             out_below_1mad = ifelse(out_below_mid == T, ifelse(p50 < mid_1mad, T, F), F),
+             out_below_1sd = ifelse(out_below_mid == T, ifelse(p50 < mid_1sd, T, F), F)) %>%
+      select(-type_name, -mid_name, -checkhi, -checkmid, -checklo, -barhi, -barlo, -barmid, -pack)
     return(df_out)
-  }
-}
+  } #endif
+} #endfunc
+
+type_stats <- outliers %>% 
+  group_by(VenDor, side, type) %>% 
+  summarise(type_p50 = mean(p50), 
+            type_hampel_lo = median(p50) - (3 *mad(p50))) %>% 
+  ungroup() %>% rowwise() %>% 
+  mutate(type_name = paste0(VenDor, side, type)) %>% 
+  select(type_name, group_p50, type_hampel_lo)
+
+mid_stats <- outliers %>% 
+  filter(type == "mid") %>% 
+  group_by(VenDor, side) %>% 
+  summarise(mid_p50 = mean(p50), 
+            mid_min = min(p50),
+            mid_1mad = mean(p50) - mad(p50),
+            mid_1sd = mean(p50) - sd(p50)) %>% 
+  ungroup() %>% rowwise() %>%
+  mutate(mid_name = paste0(VenDor, side)) %>% 
+  select(mid_name, mid_p50, mid_min, mid_1mad, mid_1sd)
+
+seed_hockey <- outliers %>% 
+  group_by(VenDor) %>%
+  mutate(vd_p50 = mean(p50)) %>%
+  ungroup() %>%
+  mutate(type_name = paste0(VenDor, side, type), 
+         mid_name = paste0(VenDor, side)) %>% 
+  left_join(type_stats, by = "type_name") %>% 
+  left_join(mid_stats, by = "mid_name") %>%
+  mutate(out_below_mid = ifelse(type != "mid", ifelse(p50 < mid_p50, T, F), F),
+         out_below_midmin = ifelse(out_below_mid == T, ifelse(p50 < mid_min, T, F), F),
+         out_below_1mad = ifelse(out_below_mid == T, ifelse(p50 < mid_1mad, T, F), F),
+         out_below_1sd = ifelse(out_below_mid == T, ifelse(p50 < mid_1sd, T, F), F)) %>%
+  select(-type_name, -mid_name, -checkhi, -checkmid, -checklo, -barhi, -barlo, -barmid, -pack)
 
 Analyze_DVoutliers(outliers, tzsimplest, "med")
 Analyze_DVoutliers(outliers, tzsimplest, "lat")
