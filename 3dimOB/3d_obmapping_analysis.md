@@ -42,7 +42,8 @@ MatchColClasses <- function(df1, df2) {
 
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
-Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", title = NA) {
+Cluster <- function (olfr, topX = 72, minClustSize = 5, 
+                     chooseOut = "plot", title = NA) {
   df <- ranked %>% 
     filter(olfrname == olfr) %>% 
     mutate(rankofrank = min_rank(desc(min_rank(p50)))) %>% 
@@ -112,7 +113,9 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
     arrange(clustsizerank) %>%
     mutate(isCluster = ifelse(n >= minClustSize, 1, 0), 
            clust_unique = dense_rank(desc(clustmaxp * isCluster))) %>%
-    select(p2.5:ORrankpervox, rankofrank, rawclust:clustsizerank, clust_unique, isCluster)
+    select(p2.5:ORrankpervox, rankofrank, 
+           rawclust:clustsizerank, 
+           clust_unique, isCluster)
   
   df_clustered <- df_out %>% filter(isCluster == 1)
   too_small <- df_out %>% filter(isCluster == 0.5)
@@ -149,13 +152,15 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~clust_unique,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -171,7 +176,8 @@ BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
   cphb <- 0
   topStep <- topMin
   while (cphb < clustersPerHalfBulb) {
-    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, chooseOut = "data")
+    df_in <- Cluster(olfr, topX = topStep, 
+                     minClustSize = minSize, chooseOut = "data")
     df_ml <- df_in %>% 
       filter(isCluster == 1) %>% 
       group_by(clust_unique) %>% 
@@ -233,14 +239,16 @@ BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~clust_unique,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -260,8 +268,10 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
   } #endfor
   
   #always need notbest for the shape shell1
-  notbest <- BestML(x[1], topMin = 100, topMax = 150, topBy = 50, minSize = 2, 
-                    clustersPerHalfBulb = 1, chooseOut = "notbest")
+  notbest <- BestML(x[1], topMin = 100, topMax = 150, 
+                    topBy = 50, minSize = 2, 
+                    clustersPerHalfBulb = 1, 
+                    chooseOut = "notbest")
   df_out <- bind_rows(list_out)
   
   #output
@@ -278,14 +288,16 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -301,14 +313,16 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -325,7 +339,8 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
   clustFound <- 0
   topStep <- topMin
   while (clustFound != clustOut) {
-    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, chooseOut = "data")
+    df_in <- Cluster(olfr, topX = topStep, 
+                     minClustSize = minSize, chooseOut = "data")
     df_ml <- df_in %>% 
       filter(isCluster == 1) %>% 
       group_by(clust_unique) %>% 
@@ -397,8 +412,12 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
             } #endif df_bestM$meanVD[1] == max
           } else if (df_bestM$dorsalRating[1] == 1) {
             #OR has mixed info, return best
-            df_bestM <- df_bestM %>% filter(MedRank == 1)  %>% mutate(test = "2")
-            df_bestL <- df_bestL %>% filter(LatRank == 1)  %>% mutate(test = "2")
+            df_bestM <- df_bestM %>% 
+              filter(MedRank == 1) %>% 
+              mutate(test = "2")
+            df_bestL <- df_bestL %>% 
+              filter(LatRank == 1) %>% 
+              mutate(test = "2")
           } else {
             #OR has ventral info, constrain both med/lat to have ventral glom
             if (df_bestM$meanVD[1] == min) {
@@ -407,14 +426,14 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
                 filter(MedRank == 1)   %>% mutate(test = "3m")
               df_bestL <- df_bestL %>%
                 filter(meanVD < 13) %>%
-                filter(LatRank == min(LatRank))  %>% mutate(test = "3m")
+                filter(LatRank == min(LatRank)) %>% mutate(test = "3m")
               
             } else if (df_bestL$meanVD[1] == min) {
               df_bestL <- df_bestL %>%
-                filter(LatRank == 1)  %>% mutate(test = "3l")
+                filter(LatRank == 1) %>% mutate(test = "3l")
               df_bestM <- df_bestM %>% 
                 filter(meanVD < 13) %>%
-                filter(MedRank == min(MedRank))  %>% mutate(test = "3l")
+                filter(MedRank == min(MedRank)) %>% mutate(test = "3l")
             } #endif (df_bestM$meanVD[1] == min)
           } #endif (df_bestM$dorsalRating[1] >= 2)
         } #endif (min < 13)
@@ -429,14 +448,18 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
             filter(meanVD >= 13) %>%
             filter(LatRank == min(LatRank))  %>% mutate(test = "4")
         } else {
-          df_bestM <- df_bestM %>% filter(MedRank == 1)   %>% mutate(test = "5")
-          df_bestL <- df_bestL %>% filter(LatRank == 1)  %>% mutate(test = "5")
+          df_bestM <- df_bestM %>% filter(MedRank == 1) %>% mutate(test = "5")
+          df_bestL <- df_bestL %>% filter(LatRank == 1) %>% mutate(test = "5")
         } #endif (df_bestM$dorsalRating[1] >= 2)
       } #endif (max >= 13)
     } #endif (is.nax(max))
     
-    df_bestM <- df_bestM %>% filter(MedRank == min(MedRank))  %>% mutate(test = "suck")
-    df_bestL <- df_bestL %>% filter(LatRank == min(LatRank)) %>% mutate(test = "suck")
+    df_bestM <- df_bestM %>% 
+      filter(MedRank == min(MedRank)) %>% 
+      mutate(test = "suck")
+    df_bestL <- df_bestL %>% 
+      filter(LatRank == min(LatRank)) %>% 
+      mutate(test = "suck")
     
     clust_bestM <- unique(df_bestM$clust_unique)
     clust_bestL <- unique(df_bestL$clust_unique)
@@ -476,14 +499,16 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~clust_unique,
                 text = ~paste('Gene:', olfrname,
                               '<br>C_size_rank:', clustsizerank,
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -518,14 +543,16 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -541,14 +568,16 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6)) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
@@ -578,17 +607,20 @@ Heat3D <- function(olfr, dimrep = 1, dv = "oe", raw = F, chooseOut = "plot") {
   
   if (dimrep == 1) {
     df_out <- df_dv %>% 
-      select(olfrname, AntPos10, APval10, MedLat8, MLval8, VD_selected, VD_value, side) %>%
+      select(olfrname, AntPos10, APval10, MedLat8, MLval8, 
+             VD_selected, VD_value, side) %>%
       rename(AP_selected = AntPos10, AP_value = APval10,
              ML_selected = MedLat8, ML_value = MLval8)
   } else if (dimrep == 2) {
     df_out <- df_dv %>% 
-      select(olfrname, AntPos13, APval13, MedLat11, MLval11, VD_selected, VD_value, side) %>%
+      select(olfrname, AntPos13, APval13, MedLat11, MLval11, 
+             VD_selected, VD_value, side) %>%
       rename(AP_selected = AntPos13, AP_value = APval13,
              ML_selected = MedLat11, ML_value = MLval11)
   } else if (dimrep == 3) {
     df_out <- df_dv %>% 
-      select(olfrname, AntPos15, APval15, MedLat16, MLval16, VD_selected, VD_value, side) %>%
+      select(olfrname, AntPos15, APval15, MedLat16, MLval16, 
+             VD_selected, VD_value, side) %>%
       rename(AP_selected = AntPos15, AP_value = APval15,
              ML_selected = MedLat16, ML_value = MLval16)
   } else if (dimrep == "123") {
@@ -641,7 +673,9 @@ Heat3D <- function(olfr, dimrep = 1, dv = "oe", raw = F, chooseOut = "plot") {
       return(df_out)
     }
   } else if (raw == F) { 
-    df_close <- tibble("AntPos" = numeric(), "MedLat" = numeric(), "VenDor" = numeric())
+    df_close <- tibble("AntPos" = numeric(), 
+                       "MedLat" = numeric(), 
+                       "VenDor" = numeric())
     for (i in 1:nrow(df_out)) {
       distances <- vector(mode = "numeric", length = nrow(blankdata))
       sidevec <- c("Lateral", "Medial")
@@ -649,7 +683,8 @@ Heat3D <- function(olfr, dimrep = 1, dv = "oe", raw = F, chooseOut = "plot") {
         distances[j] <- sqrt((df_out$AP_selected[i] - blankdata$AntPos[j])^2 +
                                (df_out$ML_selected[i] - blankdata$MedLat[j])^2 + 
                                (df_out$VD_selected[i] - blankdata$VenDor[j])^2)
-        df_close[i,] <- blankdata[which(rank(distances, ties.method = "first") == 1),]
+        df_close[i,] <- blankdata[which(rank(distances, 
+                                             ties.method = "first") == 1),]
       }
     }
     
@@ -694,7 +729,8 @@ Heat3D <- function(olfr, dimrep = 1, dv = "oe", raw = F, chooseOut = "plot") {
 } #endfunction
 
 #compute distances between heatmap peak point and good point data featuring eurovision movie memes
-DistHeat3D <- function(olfr_list, heat_dimrep = 1, heat_dv = "oe", heat_raw = F) {
+DistHeat3D <- function(olfr_list, heat_dimrep = 1, 
+                       heat_dv = "oe", heat_raw = F) {
   doubletrouble <- tibble(olfrname = character(), side = character(), 
                           distance = numeric(), ap_ml_vd_3d = character(), 
                           ap_ml_vd_heat = character(), .rows = 0)
@@ -713,14 +749,14 @@ DistHeat3D <- function(olfr_list, heat_dimrep = 1, heat_dv = "oe", heat_raw = F)
              ap_ml_vd_3d = paste(AntPos, MedLat, VenDor,sep = "_")) 
     
     doubletrouble <- bind_rows(doubletrouble, 
-                                  left_join(heatpoint, goodpoint, 
-                                            by = c("olfrname", "side"), 
-                                            suffix = c("_h", "_3")) %>%
-                                    mutate(distance = sqrt((AntPos_h - AntPos_3)^2 +
-                                                             (MedLat_h - MedLat_3)^2 +
-                                                             (VenDor_h - VenDor_3)^2)) %>%
-                                    select(olfrname, side, distance, 
-                                           ap_ml_vd_3d, ap_ml_vd_heat))
+                               left_join(heatpoint, goodpoint, 
+                                         by = c("olfrname", "side"), 
+                                         suffix = c("_h", "_3")) %>%
+                        mutate(distance = sqrt((AntPos_h - AntPos_3)^2 +
+                                               (MedLat_h - MedLat_3)^2 +
+                                               (VenDor_h - VenDor_3)^2)) %>%
+                        select(olfrname, side, distance, 
+                               ap_ml_vd_3d, ap_ml_vd_heat))
   } #endfor
   doubletrouble <- doubletrouble %>% 
     mutate(dimrep = heat_dimrep,
@@ -730,10 +766,49 @@ DistHeat3D <- function(olfr_list, heat_dimrep = 1, heat_dv = "oe", heat_raw = F)
 } #endfunction
 
 
-Plot_predictions <- function(gene_vector, varcolor=~olfrname, chooseOut = "point", title = NA) {
-  clust_df <- filter_preds %>% filter(olfrname %in% gene_vector)
-  if (chooseOut == "point") {
-    point_df <- clust_df %>% filter(p50 == clustmaxp)
+#need to comeup with a naming scheme for args that are input into another function
+Plot_props <- function(med_in, lat_in) {
+  input_df <- Plot_predictions(med_genes = med_in, lat_genes = lat_in,
+                               chooseOut = "side data")
+  
+  props <- input_df %>%
+    filter(p50 == clustmaxp) %>%
+    filter(!is.na(oe_region)) %>%
+    filter(!is.na(class)) %>%
+    mutate(isdor = ifelse(oe_region == "Dorsal", T, F),
+           isc1 = ifelse(class == 1, T, F)) %>%
+    group_by(VenDor) %>%
+    summarise(count = n(),
+              sum_dorsal = sum(isdor),
+              sum_c1 = sum(isc1),
+              prop_dor = sum_dorsal/count,
+              prop_c1 = sum_c1/count)
+  
+  dor_prop_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, prop_dor), stat = "identity") + 
+    ggtitle("Proportion of Dorsal OE Zone ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  c1_prop_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, prop_c1), stat = "identity") + 
+    ggtitle("Proportion of Class 1 ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  prop_plots <- dor_prop_plot + c1_prop_plot
+  return(prop_plots)
+}
+
+
+Plot_predictions <- function(med_genes = NA, lat_genes = NA, 
+                             bothsides_genes = NA, 
+                             varcolor=~olfrname, 
+                             chooseOut = "point", 
+                             title = NA) {
+  if (str_detect(tolower(chooseOut), "point")) {
+    filter_df <- filter_preds %>% filter(olfrname %in% bothsides_genes)
+    point_df <- filter_df %>% filter(p50 == clustmaxp)
     point <- plot_ly(type = "scatter3d", mode = "markers") %>% 
       add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
                 color="shell", opacity=0.15,
@@ -745,32 +820,236 @@ Plot_predictions <- function(gene_vector, varcolor=~olfrname, chooseOut = "point
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
                           zaxis = list(title = 'Ventral-Dorsal')))
-    return(point)
-  } else {
+    if (str_detect(tolower(chooseOut), "dat")) {
+      return(point_df)
+    } else {
+      return(point)
+    } #endif
+    
+  } else if (str_detect(tolower(chooseOut), "clust")) {
+    filter_df <- filter_preds %>% filter(olfrname %in% bothsides_vector)
     clust <- plot_ly(type = "scatter3d", mode = "markers") %>% 
       add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
                 color="shell", opacity=0.15,
                 marker = list(size = 6)) %>%
-      add_trace(data=clust_df, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+      add_trace(data=filter_df, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
                           zaxis = list(title = 'Ventral-Dorsal')))
-    return(clust)
+    if (str_detect(tolower(chooseOut), "dat")) {
+      return(filter_df)
+    } else {
+      return(clust)
+    } #endif
+    
+  } else if (str_detect(tolower(chooseOut), "side")) {
+    med_points <- filter_preds %>% 
+      filter(side == "Medial") %>% filter(olfrname %in% med_genes)
+    lat_points <- filter_preds %>% 
+      filter(side == "Lateral") %>% filter(olfrname %in% lat_genes)
+    side_df <- bind_rows(med_points, lat_points)
+    side <- plot_ly(type = "scatter3d", mode = "markers") %>% 
+      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="shell", opacity=0.15,
+                marker = list(size = 6)) %>%
+      add_trace(data=side_df, x=~AntPos, y=~MedLat, z=~VenDor, color=varcolor,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_mean_ML:', meanML,
+                              '<br>C_max_p50:', clustmaxp,
+                              '<br>Cluster:', clust_unique,
+                              '<br>SideRank:', sideRank),
+                marker = list(size = 6, 
+                              line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
+    if (str_detect(tolower(chooseOut), "dat")) {
+      return(side_df)
+    } else {
+      return(side)
+    } #endif
   } #endif chooseOut
 } #endfunction
+
+
+### Outlier analysis
+#find outliers in terms of DV voxel and DV index (tan, luis, etc.) relationship
+#index is a colname, using {{colname}} to pass colname as function arg
+Find_DVoutliers <- function(index, sd_from_mean = 1.645) {
+  for (i in min(filter_preds$VenDor):max(filter_preds$VenDor)) {
+    filtered_lat <- filter_preds %>%
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Lateral") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    lat_sum <- filtered_lat %>% 
+      summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
+    lat_midsdlo <- lat_sum$avg_idx[1] - sd_from_mean * lat_sum$sd_idx[1]
+    lat_midsdhi <- lat_sum$avg_idx[1] + sd_from_mean *lat_sum$sd_idx[1]
+    filtered_lat <- filtered_lat %>%
+      mutate(checkhi = ifelse({{index}} > lat_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < lat_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, 
+                                       lat_midsdlo, lat_midsdhi),
+                               5, 0),
+             barhi = lat_midsdhi,
+             barlo = lat_midsdlo,
+             barmid = lat_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}}, 
+             checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    filtered_med <- filter_preds %>%
+      filter(p50 == clustmaxp) %>%
+      filter(side == "Medial") %>%
+      filter(VenDor == i) %>%
+      mutate(temp_idx = {{index}})
+    med_sum <- filtered_med %>% summarise(avg_idx = mean(temp_idx), 
+                                          sd_idx = sd(temp_idx))
+    med_midsdlo <- med_sum$avg_idx[1] - sd_from_mean * med_sum$sd_idx[1]
+    med_midsdhi <- med_sum$avg_idx[1] + sd_from_mean * med_sum$sd_idx[1]
+    filtered_med <- filtered_med %>%
+      mutate(checkhi = ifelse({{index}} > med_midsdhi, 500, 0),
+             checklo = ifelse({{index}} < med_midsdlo, 50, 0),
+             checkmid = ifelse(between({{index}}, med_midsdlo, med_midsdhi),
+                               5, 0),
+             barhi = med_midsdhi,
+             barlo = med_midsdlo,
+             barmid = med_sum$avg_idx[1]) %>%
+      rowwise() %>%
+      mutate(pack = checkhi + checklo + checkmid) %>%
+      ungroup() %>%
+      select(olfrname, side, VenDor, p50, {{index}},
+             checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
+      filter(pack > 0)
+    
+    both_latmed <- bind_rows(filtered_lat, filtered_med)
+    
+    #combine
+    if (i == max(filter_preds$VenDor)) {
+      filtered_all <- bind_rows(filtered_all, both_latmed) %>%
+        mutate(type = ifelse(pack == 500, "ahi",
+                             ifelse(pack == 50, "zlo",
+                                    ifelse(pack == 5, "mid", "woops"))))
+      return(filtered_all)
+    } else if (i == min(filter_preds$VenDor)) {
+      filtered_all <- both_latmed
+    } else {
+      filtered_all <- bind_rows(filtered_all, both_latmed)
+    } #endif
+  } #endfor
+} #endfunc
+
+
+# return plots or data pertaining to DV position vs DV index outliers
+Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
+  if(str_detect(tolower(chooseOut), "lat")) {
+    lat_indiv <- df %>%
+      filter(side == "Lateral") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Lateral predictions") +
+      theme(legend.position = "none")
+    
+    lat_groups <- df %>%
+      filter(side == "Lateral") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    lat_plots <- lat_indiv + lat_groups
+    return(lat_plots)
+  } else if (str_detect(tolower(chooseOut), "med")) {
+    med_indiv <- df %>%
+      filter(side == "Medial") %>% 
+      ggplot() + 
+      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
+      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
+      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
+      ggtitle("Medial predictions") +
+      theme(legend.position = "none")
+    
+    med_groups <- df %>%
+      filter(side == "Medial") %>% 
+      group_by(VenDor, type) %>% 
+      summarise(avgp50 = mean(p50),
+                group_size = n()) %>% 
+      ggplot() + 
+      geom_point(aes(type, avgp50, size = group_size)) +
+      facet_wrap(~ VenDor) +
+      theme(legend.position = "none")
+    
+    med_plots <- med_indiv + med_groups
+    return(med_plots)
+  } else {
+    #return tibble with p50 evaluation of outliers
+    type_stats <- df %>% 
+      group_by(VenDor, side, type) %>% 
+      summarise(type_p50 = mean(p50), 
+                type_hampel_lo = median(p50) - (3 *mad(p50))) %>% 
+      ungroup() %>% rowwise() %>% 
+      mutate(type_name = paste0(VenDor, side, type)) %>% 
+      select(type_name, type_p50, type_hampel_lo)
+    
+    mid_stats <- df %>% 
+      filter(type == "mid") %>% 
+      group_by(VenDor, side) %>% 
+      summarise(mid_p50 = mean(p50), 
+                mid_min = min(p50),
+                mid_1mad = mean(p50) - mad(p50)) %>% 
+      ungroup() %>% rowwise() %>%
+      mutate(mid_name = paste0(VenDor, side)) %>% 
+      select(mid_name, mid_p50, mid_min, mid_1mad)
+    
+    df_out <- df %>% 
+      group_by(VenDor) %>%
+      mutate(vd_p50 = mean(p50)) %>%
+      ungroup() %>%
+      mutate(type_name = paste0(VenDor, side, type), 
+             mid_name = paste0(VenDor, side)) %>% 
+      left_join(type_stats, by = "type_name") %>% 
+      left_join(mid_stats, by = "mid_name") %>%
+      mutate(out_below_mid = ifelse(type != "mid", 
+                                    ifelse(p50 < mid_p50, T, F), F),
+             out_below_midmin = ifelse(out_below_mid == T, 
+                                       ifelse(p50 < mid_min, T, F), F),
+             out_below_1mad = ifelse(out_below_mid == T, 
+                                     ifelse(p50 < mid_1mad, T, F), F)) %>%
+      select(-type_name, -mid_name, 
+             -checkhi, -checkmid, -checklo, 
+             -barhi, -barlo, -barmid, -pack)
+    return(df_out)
+  } #endif
+} #endfunc
 ```
 
 # Load data
@@ -790,7 +1069,7 @@ kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_s
 
 ``` r
 ectopic <- c("Olfr287","Olfr32")
-kzYgood <- dplyr::select(kzY, -ectopic) %>% dplyr::select(-name, -rep, -slice, -dim, -dimrep)
+kzYgood <- select(kzY, -ectopic) %>% select(-name, -rep, -slice, -dim, -dimrep)
 ```
 
     ## Note: Using an external vector in selections is ambiguous.
@@ -802,7 +1081,8 @@ kzYgood <- dplyr::select(kzY, -ectopic) %>% dplyr::select(-name, -rep, -slice, -
 kzmY <- as.matrix(kzYgood)
 
 #feature info
-info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", col_names = TRUE) %>% 
+info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", 
+                 col_names = TRUE) %>% 
   rename("olfrname" = "gene") %>%
   select(olfrname:RTP, known, lowTPM)
 ```
@@ -886,8 +1166,9 @@ dvml_blank <- blankdata %>%
   mutate(symdim = ifelse(MedLat == round(symline$mlvals[which(symline$apvals == AntPos)]),"SymLine", dim)) %>%
   ungroup()
 
-#blankOB
-plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor, 
+#blankOB on dark background
+plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, 
+        color = ~VenDor, 
         text = ~paste('Dim: ', dim,
                       '<br>AP:', AntPos, 
                       '<br>ML:', MedLat,
@@ -987,10 +1268,17 @@ goodORs <- metrics %>%
   as_vector() 
 
 filter_preds <- all_predictions
-filter_olfrs <- filter_preds %>% filter(str_detect(olfrname, "Olfr")) %>% select(olfrname) %>% unique() %>% as_vector()
-filter_vmnrs <- filter_preds %>% filter(str_detect(olfrname, "Vmn")) %>% select(olfrname) %>% unique() %>% as_vector()
-filter_taars <- filter_preds %>% filter(str_detect(olfrname, "Taar")) %>% select(olfrname) %>% unique() %>% as_vector()
-filter_all <- filter_preds %>% select(olfrname) %>% unique() %>% as_vector()
+filter_olfrs <- filter_preds %>% 
+  filter(str_detect(olfrname, "Olfr")) %>% 
+  select(olfrname) %>% unique() %>% as_vector()
+filter_vmnrs <- filter_preds %>% 
+  filter(str_detect(olfrname, "Vmn")) %>% 
+  select(olfrname) %>% unique() %>% as_vector()
+filter_taars <- filter_preds %>% 
+  filter(str_detect(olfrname, "Taar")) %>% 
+  select(olfrname) %>% unique() %>% as_vector()
+filter_all <- filter_preds %>% 
+  select(olfrname) %>% unique() %>% as_vector()
 ```
 
 # Class 1 vs Class 2 positions
@@ -1006,41 +1294,10 @@ investigation).
 #lets look at class 1 vs class 2 ORs, note that is it possible for a voxel to hold multiple OR cluster points
 filter_preds <- filter_preds %>% 
   mutate(class_fct = as_factor(class))
-Plot_predictions(filter_olfrs, varcolor = ~class_fct)
+Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~class_fct)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
-
-``` r
-#a look at proportions to deal with point density
-class_props <- filter_preds %>% 
-  filter(!is.na(class)) %>%
-  filter(p50 == clustmaxp) %>%
-  group_by(olfrname) %>%
-  mutate(VDmeanpos = round(mean(VenDor))) %>%
-  ungroup() %>%
-  mutate(propC1 = ifelse(class == 1, T, F)) %>%
-  group_by(VDmeanpos) %>%
-  summarise(count = n(),
-            sum_class1 = sum(propC1),
-            proportion_class1 = sum_class1/count)
-
-ggplot(class_props) + 
-  geom_bar(aes(VDmeanpos, proportion_class1), stat = "identity") + 
-  ggtitle("Proportion of Class 1 ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
-```
-
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-3-2.png)<!-- -->
-
-``` r
-ggplot(class_props) + 
-  geom_bar(aes(VDmeanpos, sum_class1), stat = "identity") + 
-  ggtitle("Number of Class 1 ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
-```
-
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-3-3.png)<!-- -->
 
 # OE region positions (zonal expression of OR as determined by Matsunami Lab DiffE)
 
@@ -1049,42 +1306,19 @@ relation to more discrete tan et al. zone indices but this is more
 readable.
 
 ``` r
-Plot_predictions(filter_olfrs, varcolor = ~oe_region, title = "OE Zone of cluster points for 1115 ORs")
+Plot_predictions(bothsides_genes = filter_olfrs, 
+                 varcolor = ~oe_region, 
+                 title = "OE Zone of cluster points for 1115 ORs")
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
 ``` r
 #a look at proportions to deal with point density
-oe_props <- filter_preds %>% 
-  filter(str_detect(olfrname, "Olfr")) %>%
-  filter(!is.na(oe_region)) %>%
-  group_by(olfrname) %>%
-  mutate(VDmeanpos = round(mean(VenDor))) %>%
-  ungroup() %>%
-  mutate(isdor = ifelse(oe_region == "Dorsal", T, F)) %>%
-  group_by(VDmeanpos) %>%
-  summarise(count = n(),
-            sum_dorsal = sum(isdor),
-            proportion_dorsal = sum_dorsal/count,
-            proportion_ventral = 1-proportion_dorsal)
-
-ggplot(oe_props) + 
-  geom_bar(aes(VDmeanpos, proportion_dorsal), stat = "identity") + 
-  ggtitle("Proportion of Dorsal OE Zone ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
+Plot_props(med_in = filter_olfrs, lat_in = filter_olfrs)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
-
-``` r
-ggplot(oe_props) + 
-  geom_bar(aes(VDmeanpos, sum_dorsal), stat = "identity") + 
-  ggtitle("Number of Dorsal OE Zone ORs across Ventral-Dorsal Axis") + 
-  xlab("Ventral  <<<    100um sections   >>>  Dorsal")
-```
-
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-4-3.png)<!-- -->
 
 # Tan zone indexes
 
@@ -1124,156 +1358,17 @@ filter_preds %>%
   filter(p50 == clustmaxp) %>%
   filter(side == "Lateral") %>%
   ggplot() +
-  geom_jitter(aes(tzbins, VenDor)) +
-  geom_smooth(aes(tzbins, VenDor)) +
-  ggtitle("Lateral points - tan and prediction position")
-```
-
-    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
-
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
-
-``` r
-filter_preds %>% 
-  filter(p50 == clustmaxp) %>%
-  filter(side == "Lateral") %>%
-  ggplot() +
   geom_boxplot(aes(as_factor(tzbins), VenDor)) +
   ggtitle("Lateral points - tan and prediction position")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-3.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
 
 ``` r
-#find outliers in terms of DV voxel and DV index (tan, luis, etc.) relationship (outside of 1.645 SDs from mean or ~90%)
-#index is a colname, using {{colname}} to pass colname as function arg
-Find_DVoutliers <- function(index, sd_from_mean = 1.645) {
-  for (i in min(filter_preds$VenDor):max(filter_preds$VenDor)) {
-    filtered_lat <- filter_preds %>%
-      filter(p50 == clustmaxp) %>%
-      filter(side == "Lateral") %>%
-      filter(VenDor == i) %>%
-      mutate(temp_idx = {{index}})
-    lat_sum <- filtered_lat %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
-    lat_midsdlo <- lat_sum$avg_idx[1] - sd_from_mean * lat_sum$sd_idx[1]
-    lat_midsdhi <- lat_sum$avg_idx[1] + sd_from_mean *lat_sum$sd_idx[1]
-    filtered_lat <- filtered_lat %>%
-      mutate(checkhi = ifelse({{index}} > lat_midsdhi, 500, 0),
-             checklo = ifelse({{index}} < lat_midsdlo, 50, 0),
-             checkmid = ifelse(between({{index}}, lat_midsdlo, lat_midsdhi), 5, 0),
-             barhi = lat_midsdhi,
-             barlo = lat_midsdlo,
-             barmid = lat_sum$avg_idx[1]) %>%
-      rowwise() %>%
-      mutate(pack = checkhi + checklo + checkmid) %>%
-      ungroup() %>%
-      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
-      filter(pack > 0)
-    
-    filtered_med <- filter_preds %>%
-      filter(p50 == clustmaxp) %>%
-      filter(side == "Medial") %>%
-      filter(VenDor == i) %>%
-      mutate(temp_idx = {{index}})
-    med_sum <- filtered_med %>% summarise(avg_idx = mean(temp_idx), sd_idx = sd(temp_idx))
-    med_midsdlo <- med_sum$avg_idx[1] - sd_from_mean * med_sum$sd_idx[1]
-    med_midsdhi <- med_sum$avg_idx[1] + sd_from_mean * med_sum$sd_idx[1]
-    filtered_med <- filtered_med %>%
-      mutate(checkhi = ifelse({{index}} > med_midsdhi, 500, 0),
-             checklo = ifelse({{index}} < med_midsdlo, 50, 0),
-             checkmid = ifelse(between({{index}}, med_midsdlo, med_midsdhi), 5, 0),
-             barhi = med_midsdhi,
-             barlo = med_midsdlo,
-             barmid = med_sum$avg_idx[1]) %>%
-      rowwise() %>%
-      mutate(pack = checkhi + checklo + checkmid) %>%
-      ungroup() %>%
-      select(olfrname, side, VenDor, p50, {{index}}, checkhi, checklo, checkmid, barhi, barlo, barmid, pack) %>%
-      filter(pack > 0)
-    
-    both_latmed <- bind_rows(filtered_lat, filtered_med)
-    
-    #combine
-    if (i == max(filter_preds$VenDor)) {
-      filtered_all <- bind_rows(filtered_all, both_latmed) %>%
-        mutate(type = ifelse(pack == 500, "ahi",
-                             ifelse(pack == 50, "zlo",
-                                    ifelse(pack == 5, "mid", "woops"))))
-      return(filtered_all)
-    } else if (i == min(filter_preds$VenDor)) {
-      filtered_all <- both_latmed
-    } else {
-      filtered_all <- bind_rows(filtered_all, both_latmed)
-    }#endif
-  } #endfor
-} #endfunc
-
-#outliers of VD by bin is now outliers_tzbin_vd until close
-
 outliers <- Find_DVoutliers(tzsimplest, 1)
-
-Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
-  if(str_detect(tolower(chooseOut), "lat")) {
-    lat_indiv <- df %>%
-      filter(side == "Lateral") %>% 
-      ggplot() + 
-      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
-      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
-      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
-      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
-      ggtitle("Lateral predictions") +
-      theme(legend.position = "none")
-    
-    lat_groups <- df %>%
-      filter(side == "Lateral") %>% 
-      group_by(VenDor, type) %>% 
-      summarise(avgp50 = mean(p50),
-                group_size = n()) %>% 
-      ggplot() + 
-      geom_point(aes(type, avgp50, size = group_size)) +
-      facet_wrap(~ VenDor) +
-      theme(legend.position = "none")
-    
-    lat_plots <- lat_indiv + lat_groups
-    return(lat_plots)
-  } else if (str_detect(tolower(chooseOut), "med")) {
-    med_indiv <- df %>%
-      filter(side == "Medial") %>% 
-      ggplot() + 
-      geom_point(aes(VenDor, {{index}}, color = type), alpha = 0.5) +
-      geom_point(aes(VenDor, barhi), color = "black", shape = 4) +
-      geom_point(aes(VenDor, barlo), color = "black", shape = 4) +
-      geom_point(aes(VenDor, barmid), color = "black", shape = 4) + 
-      ggtitle("Medial predictions") +
-      theme(legend.position = "none")
-    
-    med_groups <- df %>%
-      filter(side == "Medial") %>% 
-      group_by(VenDor, type) %>% 
-      summarise(avgp50 = mean(p50),
-                group_size = n()) %>% 
-      ggplot() + 
-      geom_point(aes(type, avgp50, size = group_size)) +
-      facet_wrap(~ VenDor) +
-      theme(legend.position = "none")
-    
-    med_plots <- med_indiv + med_groups
-    return(med_plots)
-  } else {
-    df_out <- df %>%
-      group_by(VenDor, side, type) %>%
-      mutate(avgp50 = mean(p50),
-             group_size = n()) %>%
-      ungroup() %>%
-      mutate()
-    return(df_out)
-  }
-}
 
 Analyze_DVoutliers(outliers, tzsimplest, "med")
 ```
-
-    ## `summarise()` regrouping output by 'VenDor' (override with `.groups` argument)
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
 
@@ -1281,9 +1376,101 @@ Analyze_DVoutliers(outliers, tzsimplest, "med")
 Analyze_DVoutliers(outliers, tzsimplest, "lat")
 ```
 
-    ## `summarise()` regrouping output by 'VenDor' (override with `.groups` argument)
-
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-7-2.png)<!-- -->
+
+``` r
+outlier_df <- Analyze_DVoutliers(outliers, tzsimplest, "data")
+```
+
+# plot non-outliers using sided gene vectors
+
+``` r
+med_mids <- outlier_df %>% filter(side == "Medial") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_mids <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_mids, lat_genes = lat_mids,
+                 varcolor=~tzsimplest, 
+                 chooseOut = "side", 
+                 title = "ML points - No outliers")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_mids, lat_in = lat_mids)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
+
+``` r
+med_outs <- outlier_df %>% filter(side == "Medial") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_outs <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_outs, lat_genes = lat_outs,
+                 varcolor=~tzsimplest, 
+                 chooseOut = "side", 
+                 title = "ML points - Just outliers")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_outs, lat_in = lat_outs)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
+
+``` r
+med_belowmid <- outlier_df %>% filter(side == "Medial") %>% 
+  filter(out_below_mid == T) %>%
+  select(olfrname) %>% as_vector()
+lat_belowmid <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(out_below_mid == T) %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_belowmid, lat_genes = lat_belowmid,
+                 varcolor=~tzsimplest, 
+                 chooseOut = "side", 
+                 title = "ML points - Outliers below mid p50")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_belowmid, lat_in = lat_belowmid)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-2.png)<!-- -->
+
+``` r
+med_belowmidmin <- outlier_df %>% filter(side == "Medial") %>% 
+  filter(out_below_midmin == T) %>% 
+  select(olfrname) %>% as_vector()
+lat_belowmidmin <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(out_below_midmin == T) %>% 
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_belowmidmin, lat_genes = lat_belowmidmin,
+                 varcolor=~tzsimplest, 
+                 chooseOut = "side", 
+                 title = "ML points - Outliers below min mid p50")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_belowmidmin, lat_in = lat_belowmidmin)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
 
 # DV indexes from Luis 3D OE project
 
@@ -1315,7 +1502,7 @@ filter_preds <- filter_preds %>%
 Plot_predictions(filter_olfrs, varcolor = ~logDPT)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
 ``` r
 test <- filter_preds %>%
@@ -1374,7 +1561,7 @@ topic_ors <- filter_preds$olfrname
 Plot_predictions(topic_ors, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
 
 ``` r
 topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
@@ -1382,7 +1569,7 @@ topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
 Plot_predictions(topic_X, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
 
 ``` r
 #1 is all over
@@ -1402,7 +1589,9 @@ include all FI ORs now that code was improved in terms of
 speed.
 
 ``` r
-olfr_result <- read_csv("~/Desktop/rproj/obmap_inactive/wach_diffe/starrsem_aligned/out/wach_v16model_top25FIenriched.csv") %>% select(-Used) %>% mutate(FIsur = ifelse(logFC > 1, ifelse(FDR < 0.05, 1, 0), 0))
+olfr_result <- read_csv("~/Desktop/rproj/obmap_inactive/wach_diffe/starrsem_aligned/out/wach_v16model_top25FIenriched.csv") %>% 
+  select(-Used) %>% 
+  mutate(FIsur = ifelse(logFC > 1, ifelse(FDR < 0.05, 1, 0), 0))
 
 func_sig <- olfr_result %>% 
   filter(FIsur == 1) %>% 
@@ -1428,7 +1617,8 @@ func_sig_olfr
 
 ``` r
 ggplot(olfr_result) + 
-  geom_point(aes(logFC,-log10(FDR), alpha = 0.25, color = as.factor(FIsur), size = 1.3)) +
+  geom_point(aes(logFC,-log10(FDR), alpha = 0.25, 
+                 color = as.factor(FIsur), size = 1.3)) +
   geom_vline(xintercept = 0) + 
   geom_hline(yintercept = -log10(0.05)) + 
   theme_cowplot() + 
@@ -1436,7 +1626,7 @@ ggplot(olfr_result) +
   xlab("nonFIsurface  <<<  log2FoldChange  >>>  FIsurface")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 # Plot significantly enriched FI surface ORs
 
@@ -1445,10 +1635,12 @@ functional imaging surface). Perhaps color by an adjusted FDR?
 
 ``` r
 #plot only highest p50 voxel of each cluster
-Plot_predictions(func_sig_olfr, varcolor=~p50, chooseOut = "point", title = "Medial/Lateral cluster points for the top 30 FI surface enriched ORs")
+Plot_predictions(func_sig_olfr, varcolor=~p50, 
+                 chooseOut = "point", 
+                 title = "Medial/Lateral points for FI surface enriched ORs")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 # plot heatmap peaks and calc dist to DorML
 
