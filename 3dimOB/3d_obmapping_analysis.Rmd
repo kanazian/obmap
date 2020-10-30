@@ -14,8 +14,11 @@ Examine OBmap 3D model predicted positions for concordance with OE DV, FI surfac
 2. Define area of functional imaging using wachowiak functional imaging area enriched ORs.
 3. Annotate positions of Mombaerts ORs onto model and compare predicted positions and distances.
 
-```{r setup, warning=F, message=F}
-knitr::opts_chunk$set(warning=F)
+
+## Setup
+Load packages and functions
+```{r setup}
+knitr::opts_chunk$set(warning=F, message=F)
 library(plotly) 
 library(tidyverse)
 library(cowplot)
@@ -762,7 +765,7 @@ DistHeat3D <- function(olfr_list, heat_dimrep = 1,
 
 
 #need to comeup with a naming scheme for args that are input into another function
-Plot_props <- function(med_in, lat_in) {
+Plot_props <- function(med_in, lat_in, chooseOut = "plots") {
   input_df <- Plot_predictions(med_genes = med_in, lat_genes = lat_in,
                                chooseOut = "side data")
   
@@ -771,29 +774,59 @@ Plot_props <- function(med_in, lat_in) {
     filter(!is.na(oe_region)) %>%
     filter(!is.na(class)) %>%
     mutate(isdor = ifelse(oe_region == "Dorsal", T, F),
-           isc1 = ifelse(class == 1, T, F)) %>%
+           isven = ifelse(oe_region == "Ventral", T, F),
+           isc1 = ifelse(class == 1, T, F),
+           isc2 = ifelse(class == 2, T, F)) %>%
     group_by(VenDor) %>%
     summarise(count = n(),
-              sum_dorsal = sum(isdor),
-              sum_c1 = sum(isc1),
-              prop_dor = sum_dorsal/count,
-              prop_c1 = sum_c1/count)
+              dorsal_ORs = sum(isdor),
+              ventral_ORs = sum(isven),
+              class1_ORs = sum(isc1),
+              class2_ORs = sum(isc2),
+              prop_dor = dorsal_ORs/count,
+              prop_c1 = class1_ORs/count)
   
-  dor_prop_plot <- ggplot(props) + 
-    geom_bar(aes(VenDor, prop_dor), stat = "identity") + 
+  dv_prop_plot <- ggplot(props %>%
+    pivot_longer(cols = c(dorsal_ORs, ventral_ORs), 
+                 names_to = "sums"),
+    aes(fill = sums, x = VenDor, y = value)) + 
+    geom_bar(position = "fill", stat = "identity") + 
     ggtitle("Proportion of Dorsal OE Zone ORs") + 
     xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
     coord_flip()
   
-  c1_prop_plot <- ggplot(props) + 
-    geom_bar(aes(VenDor, prop_c1), stat = "identity") + 
+  class_prop_plot <- ggplot(props %>%
+    pivot_longer(cols = c(class1_ORs, class2_ORs), 
+                 names_to = "sums"),
+    aes(fill = sums, x = VenDor, y = value)) + 
+    geom_bar(position = "fill", stat = "identity") + 
     ggtitle("Proportion of Class 1 ORs") + 
     xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
     coord_flip()
   
-  prop_plots <- dor_prop_plot + c1_prop_plot
-  return(prop_plots)
-}
+  dv_sum_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, dorsal_ORs), stat = "identity") + 
+    ggtitle("Number of Dorsal OE Zone ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  class_sum_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, class1_ORs), stat = "identity") + 
+    ggtitle("Number of Class 1 ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  prop_plots <- dv_prop_plot + class_prop_plot
+  number_plots <- dv_sum_plot + class_sum_plot
+  
+  if (str_detect(tolower(chooseOut), "plot")) {
+    return(prop_plots)
+  } else if (str_detect(tolower(chooseOut), "number")) {
+    return(number_plots)
+  } else {
+    return(props)
+  } #endif
+} #endelse
 
 
 Plot_predictions <- function(med_genes = NA, lat_genes = NA, 
@@ -882,7 +915,7 @@ Plot_predictions <- function(med_genes = NA, lat_genes = NA,
       return(side)
     } #endif
   } #endif chooseOut
-} #endfunction
+} #endfunctionPlot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, 
 
 
 ### Outlier analysis
@@ -1181,12 +1214,14 @@ filter_all <- filter_preds %>%
 
 # Class 1 vs Class 2 positions
 Expect Class 1 OR positions to be primarily dorsal-anterior to dorsal-central.
+Expect Class 2 ORs to be distributed throughout the OB
 Filtered out some ORs based on max to mean TPM ratio lower than 10 (968 ORs remaining). 
 These could be ORs that are poorly enriched/dropout or have non-traditional expression across the OB (requires closer investigation).
 ```{r message=F}
 #lets look at class 1 vs class 2 ORs, note that is it possible for a voxel to hold multiple OR cluster points
 filter_preds <- filter_preds %>% 
   mutate(class_fct = as_factor(class))
+
 Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~class_fct)
 ```
 
@@ -1205,16 +1240,17 @@ Plot_props(med_in = filter_olfrs, lat_in = filter_olfrs)
 
 
 # Tan zone indexes
+Note that the tan index here (tzsimplest) is flipped in order to have brighter colors reflect more dorsal index values in accordance with Hiros preferences
 ```{r}
 filter_preds <- filter_preds %>% 
   mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA),
          tzbins = round(tzsimplest/0.5)) %>%
   filter(!is.na(tzsimplest))
-Plot_predictions(filter_olfrs, varcolor = ~tzsimplest)
-Plot_predictions(filter_olfrs, varcolor = ~tzbins)
+Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~tzsimplest)
 ```
 
 
+# Are there position vs index outliers?
 ```{r}
 #predictions for medial vs lateral are probably something good to discuss in paper
 filter_preds %>% 
@@ -1234,6 +1270,7 @@ filter_preds %>%
 ```
 
 
+# Digging down on outliers
 ```{r, message=F}
 outliers <- Find_DVoutliers(tzsimplest, 1)
 
@@ -1244,7 +1281,7 @@ outlier_df <- Analyze_DVoutliers(outliers, tzsimplest, "data")
 ```
 
 
-# plot non-outliers using sided gene vectors
+## Plot non-outliers using sided gene vectors
 ```{r message=F, warning=F}
 med_mids <- outlier_df %>% filter(side == "Medial") %>% 
   filter(type == "mid") %>%
@@ -1259,9 +1296,11 @@ Plot_predictions(med_genes = med_mids, lat_genes = lat_mids,
                  title = "ML points - No outliers")
 
 Plot_props(med_in = med_mids, lat_in = lat_mids)
+Plot_props(med_in = med_mids, lat_in = lat_mids, chooseOut = "number")
 ```
 
 
+## Where are outliers located?
 ```{r message=F, warning=F}
 med_outs <- outlier_df %>% filter(side == "Medial") %>% 
   filter(type != "mid") %>%
@@ -1276,9 +1315,11 @@ Plot_predictions(med_genes = med_outs, lat_genes = lat_outs,
                  title = "ML points - Just outliers")
 
 Plot_props(med_in = med_outs, lat_in = lat_outs)
+Plot_props(med_in = med_outs, lat_in = lat_outs, chooseOut = "number")
 ```
 
 
+### Outliers with probability values below the average probability of the non-outliers
 ```{r message=F, warning=F}
 med_belowmid <- outlier_df %>% filter(side == "Medial") %>% 
   filter(out_below_mid == T) %>%
@@ -1292,11 +1333,12 @@ Plot_predictions(med_genes = med_belowmid, lat_genes = lat_belowmid,
                  chooseOut = "side", 
                  title = "ML points - Outliers below mid p50")
 
-
 Plot_props(med_in = med_belowmid, lat_in = lat_belowmid)
+Plot_props(med_in = med_belowmid, lat_in = lat_belowmid, chooseOut = "number")
 ```
 
 
+### Outliers with probability values below the min probability of the non-outlier group
 ```{r message=F, warning=F}
 med_belowmidmin <- outlier_df %>% filter(side == "Medial") %>% 
   filter(out_below_midmin == T) %>% 
@@ -1311,10 +1353,11 @@ Plot_predictions(med_genes = med_belowmidmin, lat_genes = lat_belowmidmin,
                  title = "ML points - Outliers below min mid p50")
 
 Plot_props(med_in = med_belowmidmin, lat_in = lat_belowmidmin)
+Plot_props(med_in = med_belowmidmin, lat_in = lat_belowmidmin, chooseOut = "number")
 ```
 
 
-# DV indexes from Luis 3D OE project
+# Outliers from Luis' DPT indexes
 ```{r}
 #olfr1204 had a dpt of 0, changed to 1
 ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pred.csv") %>%
@@ -1324,19 +1367,58 @@ ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pr
 filter_preds <- filter_preds %>%
   left_join(ls_idx, by = "olfrname")
 
-Plot_predictions(filter_olfrs, varcolor = ~logDPT)
+Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~logDPT)
+```
 
-test <- filter_preds %>%
-  filter(p50 == clustmaxp) %>%
-  filter(side == "Medial") %>%
-  filter(tzbins == 2) %>%
-  mutate(vdrank = min_rank(desc(VenDor)),
-         pack = ifelse(vdrank <= 10, "dorsal", 
-                       ifelse(vdrank > (max(vdrank) - 10), "ventral", 
-                              ifelse(between(vdrank, (mean(vdrank) - 5), (mean(vdrank) + 5)),
-                                     "mid", NA)))) %>%
-  select(olfrname, side, VenDor, tzsimple, tzbins, p50, pack) %>%
-  filter(!is.na(pack))
+
+# DPT index outlier analysis
+```{r, message=F, warning=F}
+dpt_outs <- Find_DVoutliers(DPT_index)
+Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "Lat")
+Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "Med")
+
+dpt_out_df <- Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "data")
+
+med_dpt_mids <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_mids <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_mids, lat_genes = lat_dpt_mids, 
+                 varcolor = ~DPT_index)
+Plot_props(med_in = med_dpt_mids, lat_in = lat_dpt_mids)
+```
+
+
+```{r, message=F, warning=F}
+med_dpt_outs <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_outs <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_outs, lat_genes = lat_dpt_outs, 
+                 varcolor = ~DPT_index)
+Plot_props(med_in = med_dpt_outs, lat_in = lat_dpt_outs)
+Plot_props(med_in = med_dpt_outs, lat_in = lat_dpt_outs, chooseOut = "number")
+```
+
+
+```{r, message=F, warning=F}
+med_dpt_belowmidmin <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(out_below_midmin == T) %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_belowmidmin <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(out_below_midmin == T) %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_belowmidmin, lat_genes = lat_dpt_belowmidmin, 
+                 varcolor = ~DPT_index)
+Plot_props(med_in = med_dpt_belowmidmin, lat_in = lat_dpt_belowmidmin)
+Plot_props(med_in = med_dpt_belowmidmin, lat_in = lat_dpt_belowmidmin, chooseOut = "number") 
 ```
 
 

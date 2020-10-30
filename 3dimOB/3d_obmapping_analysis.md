@@ -17,15 +17,60 @@ FI surface, and other features as well as known OR positions.
 3.  Annotate positions of Mombaerts ORs onto model and compare predicted
     positions and distances.
 
-<!-- end list -->
+## Setup
+
+Load packages and functions
 
 ``` r
-knitr::opts_chunk$set(warning=F)
+knitr::opts_chunk$set(warning=F, message=F)
 library(plotly) 
+```
+
+    ## Loading required package: ggplot2
+
+    ## 
+    ## Attaching package: 'plotly'
+
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     last_plot
+
+    ## The following object is masked from 'package:stats':
+    ## 
+    ##     filter
+
+    ## The following object is masked from 'package:graphics':
+    ## 
+    ##     layout
+
+``` r
 library(tidyverse)
+```
+
+    ## ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+
+    ## ✓ tibble  3.0.4     ✓ dplyr   1.0.2
+    ## ✓ tidyr   1.1.2     ✓ stringr 1.4.0
+    ## ✓ readr   1.4.0     ✓ forcats 0.5.0
+    ## ✓ purrr   0.3.4
+
+    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ## x dplyr::filter() masks plotly::filter(), stats::filter()
+    ## x dplyr::lag()    masks stats::lag()
+
+``` r
 library(cowplot)
 library(patchwork)
+```
 
+    ## 
+    ## Attaching package: 'patchwork'
+
+    ## The following object is masked from 'package:cowplot':
+    ## 
+    ##     align_plots
+
+``` r
 # functions -----------------------------------------------------------
 #https://stackoverflow.com/questions/49215193/r-error-cant-join-on-because-of-incompatible-types
 MatchColClasses <- function(df1, df2) {
@@ -767,7 +812,7 @@ DistHeat3D <- function(olfr_list, heat_dimrep = 1,
 
 
 #need to comeup with a naming scheme for args that are input into another function
-Plot_props <- function(med_in, lat_in) {
+Plot_props <- function(med_in, lat_in, chooseOut = "plots") {
   input_df <- Plot_predictions(med_genes = med_in, lat_genes = lat_in,
                                chooseOut = "side data")
   
@@ -776,29 +821,59 @@ Plot_props <- function(med_in, lat_in) {
     filter(!is.na(oe_region)) %>%
     filter(!is.na(class)) %>%
     mutate(isdor = ifelse(oe_region == "Dorsal", T, F),
-           isc1 = ifelse(class == 1, T, F)) %>%
+           isven = ifelse(oe_region == "Ventral", T, F),
+           isc1 = ifelse(class == 1, T, F),
+           isc2 = ifelse(class == 2, T, F)) %>%
     group_by(VenDor) %>%
     summarise(count = n(),
-              sum_dorsal = sum(isdor),
-              sum_c1 = sum(isc1),
-              prop_dor = sum_dorsal/count,
-              prop_c1 = sum_c1/count)
+              dorsal_ORs = sum(isdor),
+              ventral_ORs = sum(isven),
+              class1_ORs = sum(isc1),
+              class2_ORs = sum(isc2),
+              prop_dor = dorsal_ORs/count,
+              prop_c1 = class1_ORs/count)
   
-  dor_prop_plot <- ggplot(props) + 
-    geom_bar(aes(VenDor, prop_dor), stat = "identity") + 
+  dv_prop_plot <- ggplot(props %>%
+    pivot_longer(cols = c(dorsal_ORs, ventral_ORs), 
+                 names_to = "sums"),
+    aes(fill = sums, x = VenDor, y = value)) + 
+    geom_bar(position = "fill", stat = "identity") + 
     ggtitle("Proportion of Dorsal OE Zone ORs") + 
     xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
     coord_flip()
   
-  c1_prop_plot <- ggplot(props) + 
-    geom_bar(aes(VenDor, prop_c1), stat = "identity") + 
+  class_prop_plot <- ggplot(props %>%
+    pivot_longer(cols = c(class1_ORs, class2_ORs), 
+                 names_to = "sums"),
+    aes(fill = sums, x = VenDor, y = value)) + 
+    geom_bar(position = "fill", stat = "identity") + 
     ggtitle("Proportion of Class 1 ORs") + 
     xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
     coord_flip()
   
-  prop_plots <- dor_prop_plot + c1_prop_plot
-  return(prop_plots)
-}
+  dv_sum_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, dorsal_ORs), stat = "identity") + 
+    ggtitle("Number of Dorsal OE Zone ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  class_sum_plot <- ggplot(props) + 
+    geom_bar(aes(VenDor, class1_ORs), stat = "identity") + 
+    ggtitle("Number of Class 1 ORs") + 
+    xlab("Ventral  <<<    100um sections   >>>  Dorsal") +
+    coord_flip()
+  
+  prop_plots <- dv_prop_plot + class_prop_plot
+  number_plots <- dv_sum_plot + class_sum_plot
+  
+  if (str_detect(tolower(chooseOut), "plot")) {
+    return(prop_plots)
+  } else if (str_detect(tolower(chooseOut), "number")) {
+    return(number_plots)
+  } else {
+    return(props)
+  } #endif
+} #endelse
 
 
 Plot_predictions <- function(med_genes = NA, lat_genes = NA, 
@@ -887,7 +962,7 @@ Plot_predictions <- function(med_genes = NA, lat_genes = NA,
       return(side)
     } #endif
   } #endif chooseOut
-} #endfunction
+} #endfunctionPlot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, Plot_props(med_in = med_mids, 
 
 
 ### Outlier analysis
@@ -1056,28 +1131,8 @@ Analyze_DVoutliers <- function(df, index, chooseOut = "Lat") {
 
 ``` r
 kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv", col_names = TRUE) %>% select(-X1) %>% filter(dimrep == 1 | dimrep == 2)
-```
-
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   .default = col_double(),
-    ##   name = col_character(),
-    ##   dim = col_character()
-    ## )
-    ## ℹ Use `spec()` for the full column specifications.
-
-``` r
 ectopic <- c("Olfr287","Olfr32")
 kzYgood <- select(kzY, -ectopic) %>% select(-name, -rep, -slice, -dim, -dimrep)
-```
-
-    ## Note: Using an external vector in selections is ambiguous.
-    ## ℹ Use `all_of(ectopic)` instead of `ectopic` to silence this message.
-    ## ℹ See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
-    ## This message is displayed once per session.
-
-``` r
 kzmY <- as.matrix(kzYgood)
 
 #feature info
@@ -1085,42 +1140,10 @@ info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv",
                  col_names = TRUE) %>% 
   rename("olfrname" = "gene") %>%
   select(olfrname:RTP, known, lowTPM)
-```
 
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   .default = col_double(),
-    ##   gene = col_character(),
-    ##   tan_zone = col_character(),
-    ##   oe_region = col_character(),
-    ##   RTP = col_character(),
-    ##   fisurface = col_logical(),
-    ##   ish_id = col_logical(),
-    ##   lacz_xg = col_logical(),
-    ##   fp_xg = col_logical(),
-    ##   med_glom = col_character(),
-    ##   lat_glom = col_character(),
-    ##   citation = col_character(),
-    ##   known = col_logical(),
-    ##   lowTPM = col_logical()
-    ## )
-    ## ℹ Use `spec()` for the full column specifications.
-
-``` r
 #line of bulb symmetry as found using single-dimension heatmap data
 #the average of the two calculated lines is used to call whether a predicted glomeruli position is medial or lateral
 symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline.csv")
-```
-
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   apvals = col_double(),
-    ##   mlvals = col_double()
-    ## )
-
-``` r
 ggplot() +
   geom_blank() +
   geom_abline(aes(slope = 0.32655, intercept = 7.61119, color = "rep1")) +
@@ -1141,17 +1164,6 @@ ggplot() +
 #write_csv(blankdata, "~/Desktop/rproj/obmap/allmice/v21_gen25/base_files/blankOBcoords.csv")
 #blankOBcoords200922
 blankdata <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/blankOBcoords200922.csv")
-```
-
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   AntPos = col_double(),
-    ##   MedLat = col_double(),
-    ##   VenDor = col_double()
-    ## )
-
-``` r
 dvml_blank <- blankdata %>%
   mutate(dimdv = ifelse(VenDor >= 13, 
                         "Dorsal", 
@@ -1200,24 +1212,7 @@ plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor,
 ``` r
 #load 3d model predictions (clusters) from ListDorML function with non-OLfr genes expected to be Dorsal
 all_predictions <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_dornonor_ldML_201012.csv")
-```
 
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   .default = col_double(),
-    ##   olfrname = col_character(),
-    ##   side = col_character(),
-    ##   tan_zone = col_character(),
-    ##   oe_region = col_character(),
-    ##   RTP = col_character(),
-    ##   known = col_logical(),
-    ##   lowTPM = col_logical(),
-    ##   test = col_character()
-    ## )
-    ## ℹ Use `spec()` for the full column specifications.
-
-``` r
 #allORs2 <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_ldML_200925.csv") #%>% filter(p50 == clustmaxp)
 #aORcor <- tibble(olfrname = allORs$olfrname, oneAP = allORs$AntPos, oneML = allORs$MedLat, oneVD = allORs$VenDor, twoAP = allORs2$AntPos, twoML = allORs2$MedLat, twoVD = allORs2$VenDor) %>% filter(!str_detect(olfrname, "Olfr")) %>% summarise(corAP = cor(oneAP, twoAP), corML = cor(oneML, twoML), corVD = cor(oneVD, twoVD))
 # main change is corVD, due to addition of dorsal rating for VMNrs and TAARs
@@ -1284,16 +1279,17 @@ filter_all <- filter_preds %>%
 # Class 1 vs Class 2 positions
 
 Expect Class 1 OR positions to be primarily dorsal-anterior to
-dorsal-central. Filtered out some ORs based on max to mean TPM ratio
-lower than 10 (968 ORs remaining). These could be ORs that are poorly
-enriched/dropout or have non-traditional expression across the OB
-(requires closer
+dorsal-central. Expect Class 2 ORs to be distributed throughout the OB
+Filtered out some ORs based on max to mean TPM ratio lower than 10 (968
+ORs remaining). These could be ORs that are poorly enriched/dropout or
+have non-traditional expression across the OB (requires closer
 investigation).
 
 ``` r
 #lets look at class 1 vs class 2 ORs, note that is it possible for a voxel to hold multiple OR cluster points
 filter_preds <- filter_preds %>% 
   mutate(class_fct = as_factor(class))
+
 Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~class_fct)
 ```
 
@@ -1322,21 +1318,21 @@ Plot_props(med_in = filter_olfrs, lat_in = filter_olfrs)
 
 # Tan zone indexes
 
+Note that the tan index here (tzsimplest) is flipped in order to have
+brighter colors reflect more dorsal index values in accordance with
+Hiros preferences
+
 ``` r
 filter_preds <- filter_preds %>% 
   mutate(tzsimplest = ifelse(tzsimple <= 5, 6-tzsimple, NA),
          tzbins = round(tzsimplest/0.5)) %>%
   filter(!is.na(tzsimplest))
-Plot_predictions(filter_olfrs, varcolor = ~tzsimplest)
+Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~tzsimplest)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
-``` r
-Plot_predictions(filter_olfrs, varcolor = ~tzbins)
-```
-
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
+# Are there position vs index outliers?
 
 ``` r
 #predictions for medial vs lateral are probably something good to discuss in paper
@@ -1348,8 +1344,6 @@ filter_preds %>%
   geom_smooth(aes(tzbins, VenDor)) +
   ggtitle("Medial points - tan and prediction position")
 ```
-
-    ## `geom_smooth()` using method = 'loess' and formula 'y ~ x'
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
@@ -1363,6 +1357,8 @@ filter_preds %>%
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-6-2.png)<!-- -->
+
+# Digging down on outliers
 
 ``` r
 outliers <- Find_DVoutliers(tzsimplest, 1)
@@ -1382,7 +1378,7 @@ Analyze_DVoutliers(outliers, tzsimplest, "lat")
 outlier_df <- Analyze_DVoutliers(outliers, tzsimplest, "data")
 ```
 
-# plot non-outliers using sided gene vectors
+## Plot non-outliers using sided gene vectors
 
 ``` r
 med_mids <- outlier_df %>% filter(side == "Medial") %>% 
@@ -1407,6 +1403,14 @@ Plot_props(med_in = med_mids, lat_in = lat_mids)
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
 
 ``` r
+Plot_props(med_in = med_mids, lat_in = lat_mids, chooseOut = "number")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-8-3.png)<!-- -->
+
+## Where are outliers located?
+
+``` r
 med_outs <- outlier_df %>% filter(side == "Medial") %>% 
   filter(type != "mid") %>%
   select(olfrname) %>% as_vector()
@@ -1427,6 +1431,14 @@ Plot_props(med_in = med_outs, lat_in = lat_outs)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-2.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_outs, lat_in = lat_outs, chooseOut = "number")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-9-3.png)<!-- -->
+
+### Outliers with probability values below the average probability of the non-outliers
 
 ``` r
 med_belowmid <- outlier_df %>% filter(side == "Medial") %>% 
@@ -1451,6 +1463,14 @@ Plot_props(med_in = med_belowmid, lat_in = lat_belowmid)
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-2.png)<!-- -->
 
 ``` r
+Plot_props(med_in = med_belowmid, lat_in = lat_belowmid, chooseOut = "number")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-10-3.png)<!-- -->
+
+### Outliers with probability values below the min probability of the non-outlier group
+
+``` r
 med_belowmidmin <- outlier_df %>% filter(side == "Medial") %>% 
   filter(out_below_midmin == T) %>% 
   select(olfrname) %>% as_vector()
@@ -1472,72 +1492,123 @@ Plot_props(med_in = med_belowmidmin, lat_in = lat_belowmidmin)
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
 
-# DV indexes from Luis 3D OE project
+``` r
+Plot_props(med_in = med_belowmidmin, lat_in = lat_belowmidmin, chooseOut = "number")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-11-3.png)<!-- -->
+
+# Outliers from Luis’ DPT indexes
 
 ``` r
 #olfr1204 had a dpt of 0, changed to 1
 ls_idx <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_3Dindexes_real_pred.csv") %>%
   mutate(logDPT = log2(DPT_index + 0.1),
          rankDPT = min_rank(DPT_index))
-```
 
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   olfrname = col_character(),
-    ##   Rfpred_index = col_double(),
-    ##   DPT_index = col_double(),
-    ##   MiyReal_index = col_double(),
-    ##   Tan_index = col_character(),
-    ##   Miy_index = col_double(),
-    ##   Zolfr_real = col_character(),
-    ##   Zolfr_Noreal = col_double(),
-    ##   Zolfr_Momb = col_double()
-    ## )
-
-``` r
 filter_preds <- filter_preds %>%
   left_join(ls_idx, by = "olfrname")
 
-Plot_predictions(filter_olfrs, varcolor = ~logDPT)
+Plot_predictions(bothsides_genes = filter_olfrs, varcolor = ~logDPT)
 ```
 
 ![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
+# DPT index outlier analysis
+
 ``` r
-test <- filter_preds %>%
-  filter(p50 == clustmaxp) %>%
-  filter(side == "Medial") %>%
-  filter(tzbins == 2) %>%
-  mutate(vdrank = min_rank(desc(VenDor)),
-         pack = ifelse(vdrank <= 10, "dorsal", 
-                       ifelse(vdrank > (max(vdrank) - 10), "ventral", 
-                              ifelse(between(vdrank, (mean(vdrank) - 5), (mean(vdrank) + 5)),
-                                     "mid", NA)))) %>%
-  select(olfrname, side, VenDor, tzsimple, tzbins, p50, pack) %>%
-  filter(!is.na(pack))
+dpt_outs <- Find_DVoutliers(DPT_index)
+Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "Lat")
 ```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+``` r
+Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "Med")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
+
+``` r
+dpt_out_df <- Analyze_DVoutliers(dpt_outs, DPT_index, chooseOut = "data")
+
+med_dpt_mids <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_mids <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type == "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_mids, lat_genes = lat_dpt_mids, 
+                 varcolor = ~DPT_index)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-3.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_dpt_mids, lat_in = lat_dpt_mids)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-4.png)<!-- -->
+
+``` r
+med_dpt_outs <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_outs <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(type != "mid") %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_outs, lat_genes = lat_dpt_outs, 
+                 varcolor = ~DPT_index)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_dpt_outs, lat_in = lat_dpt_outs)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-14-2.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_dpt_outs, lat_in = lat_dpt_outs, chooseOut = "number")
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-14-3.png)<!-- -->
+
+``` r
+med_dpt_belowmidmin <- dpt_out_df %>% filter(side == "Medial") %>% 
+  filter(out_below_midmin == T) %>%
+  select(olfrname) %>% as_vector()
+lat_dpt_belowmidmin <- outlier_df %>% filter(side == "Lateral") %>% 
+  filter(out_below_midmin == T) %>%
+  select(olfrname) %>% as_vector()
+
+Plot_predictions(med_genes = med_dpt_belowmidmin, lat_genes = lat_dpt_belowmidmin, 
+                 varcolor = ~DPT_index)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_dpt_belowmidmin, lat_in = lat_dpt_belowmidmin)
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-15-2.png)<!-- -->
+
+``` r
+Plot_props(med_in = med_dpt_belowmidmin, lat_in = lat_dpt_belowmidmin, chooseOut = "number") 
+```
+
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-15-3.png)<!-- -->
 
 # Topics from Luis 3D OE project
 
 ``` r
 #Mayra/Antonio/Luis topics
 topics <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/LS_DegreesOfBelonging_201015.csv") 
-```
 
-    ## 
-    ## ── Column specification ────────────────────────────────────────────────────────
-    ## cols(
-    ##   olfrname = col_character(),
-    ##   T1 = col_double(),
-    ##   T2 = col_double(),
-    ##   T3 = col_double(),
-    ##   T4 = col_double(),
-    ##   T5 = col_double(),
-    ##   max_topic = col_character()
-    ## )
-
-``` r
 # topic_max <- topics_raw %>%
 #   rowwise() %>%
 #   arrange(desc(T5)) %>%
@@ -1561,7 +1632,7 @@ topic_ors <- filter_preds$olfrname
 Plot_predictions(topic_ors, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ``` r
 topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
@@ -1569,7 +1640,7 @@ topic_X <- filter_preds %>% filter(max_topic == "T2") %>%
 Plot_predictions(topic_X, varcolor = ~max_topic)
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-13-2.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-16-2.png)<!-- -->
 
 ``` r
 #1 is all over
@@ -1626,7 +1697,7 @@ ggplot(olfr_result) +
   xlab("nonFIsurface  <<<  log2FoldChange  >>>  FIsurface")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 # Plot significantly enriched FI surface ORs
 
@@ -1640,7 +1711,7 @@ Plot_predictions(func_sig_olfr, varcolor=~p50,
                  title = "Medial/Lateral points for FI surface enriched ORs")
 ```
 
-![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+![](3d_obmapping_analysis_files/figure-gfm/unnamed-chunk-18-1.png)<!-- -->
 
 # plot heatmap peaks and calc dist to DorML
 
