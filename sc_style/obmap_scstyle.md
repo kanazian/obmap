@@ -1,7 +1,7 @@
-OBmap single cell style analysis
+OB single cell style analysis
 ================
 kanazian
-Sep 24, 2020
+2020-12-23
 
 # Goal:
 
@@ -14,17 +14,20 @@ Following:
 ## Prep tpm data for sc3
 
 ``` r
+library(raster)
 library(SC3)
 library(SingleCellExperiment)
 library(scater)
 library(plotly)
-library(tidyverse)
 library(cowplot)
 library(knitr)
 library(patchwork)
+library(tidyverse)
 
 allchemo_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv") %>% select(-X1) %>% filter(name != "M14S23")
 
+info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/info_201129.csv") %>%
+  rename("olfrname" = "gene")
 set.seed(711)
 ```
 
@@ -63,7 +66,7 @@ sce <- SingleCellExperiment(
 rowData(sce)$feature_symbol <- rownames(sce)
 ```
 
-# visualize dimreduction of the ~24 AP slices
+# visualize dimreduction of the \~24 AP slices
 
 ``` r
 sce_pca <- runPCA(sce)
@@ -109,23 +112,29 @@ umapplot <- ggplot(umap_tibble) +
   theme_cowplot() +
   ggtitle("UMAP of OR Gene Expression", 
           subtitle = paste0(as.character(dim(allchemo_trim)[2]), 
-                            " Anterior-Posterior sections from 12 mice")) + 
+                            "VD sections from 3 mice")) + 
   theme(legend.position = "none") +
   geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+umapplot
+```
 
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-2-4.png)<!-- -->
+
+``` r
 #ggsave(umapplot, filename = "~/Desktop/obmap/r_analysis/sc_style/output/ap_umap.png", device = "png")
 
 sce_umapcomp <- runUMAP(sce, ncomponents = 5)
 plotUMAP(sce_umapcomp, ncomponents = 5, colour_by = "cell_type1")
 ```
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-2-4.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-2-5.png)<!-- -->
 
 # umap for all dims
 
 ``` r
-alldim <- allchemo_tpm
+set.seed(711)
+alldim <- allchemo_tpm %>% filter(rep != 16)
 ad_sample_names <- alldim$name
 ad_covars <- alldim %>% select(name:dimrep)
 
@@ -161,45 +170,201 @@ ad_umap_rd <- reducedDim(ad_umap) %>% as_tibble()
 ad_tibble <- tibble(name = rownames(reducedDim(ad_umap)), 
                       UMAP_1 = ad_umap_rd$V1, UMAP_2 = ad_umap_rd$V2) %>%
   left_join(ad_covars, by = "name") %>%
-  mutate(slice_fct = as_factor(slice))
+  mutate(slice_fct = as_factor(slice),
+         dimrep_fct = as_factor(dimrep),
+         index = 1:n())
 
 ad_umap_plot <- ggplot(ad_tibble) + 
-  geom_point(aes(UMAP_1, UMAP_2, fill = slice),
+  geom_point(aes(UMAP_1, UMAP_2, fill = slice_fct),
              size = 6, pch = 21, color = "black") +
-  scale_shape_manual(values=c(0, 1, 2)) +
-  scale_fill_viridis_c() +
+  scale_fill_viridis_d() +
+  theme_cowplot() +
+  ggtitle("UMAP of OR Gene Expression", 
+          subtitle = paste0(as.character(dim(ad_trim)[2]), 
+                            " alldim sections from 11 mice")) + 
+  theme(legend.position = "none") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+
+#hiro doesnt like the simple all dim plot colored by slice, make his request
+hmt1 <- ad_tibble %>% mutate(facet = "AntPos", 
+                             coloredin = ifelse(dimrep == 1, "B", "A"),
+                             transp = ifelse(dimrep == 1, 1, 0.9))
+hmt2 <- ad_tibble %>% mutate(facet = "MedLat", 
+                             coloredin = ifelse(dimrep == 2, "B", "A"),
+                             transp = ifelse(dimrep == 2, 1, 0.9))
+hmt3 <- ad_tibble %>% mutate(facet = "VenDor", 
+                             coloredin = ifelse(dimrep == 3, "B", "A"),
+                             transp = ifelse(dimrep == 3, 1, 0.9))
+hm12 <- bind_rows(hmt1, hmt2)
+hm123 <- bind_rows(hm12, hmt3)
+
+hm_umap_plot <- ggplot(hm123) + 
+  geom_point(aes(UMAP_1, UMAP_2, fill = coloredin, alpha = transp),
+             size = 6, pch = 21, color = "black") +
+  scale_fill_manual(values = c("white", "red")) +
   theme_cowplot() +
   ggtitle("UMAP of OR Gene Expression", 
           subtitle = paste0(as.character(dim(ad_trim)[2]), 
                             " alldim sections from 12 mice")) + 
   theme(legend.position = "none") +
   geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  facet_wrap(~ facet)
 
 ad_facets <- ggplot(ad_tibble) + 
   geom_point(aes(UMAP_1, UMAP_2, fill = slice),
              size = 6, pch = 21, color = "black") +
   facet_wrap(~ dim) +
-  scale_shape_manual(values=c(0, 1, 2)) +
   scale_fill_viridis_c() +
   theme_cowplot() +
   geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red")
 
 alldimplots <- ad_umap_plot / ad_facets
-ad_umap_plot
+hmplots <- hm_umap_plot / ad_facets
+alldimplots
 ```
 
 ![](obmap_scstyle_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 ``` r
-ad_facets
+hmplots
 ```
 
 ![](obmap_scstyle_files/figure-gfm/unnamed-chunk-3-2.png)<!-- -->
 
 ``` r
 #ggsave(alldimplots, filename = "~/Desktop/obmap/r_analysis/sc_style/alldim_umap.png", device = "png")
+```
+
+# find closest sample to each sample in terms of UMAP position
+
+``` r
+ad_xy <- cbind(ad_tibble$UMAP_1, ad_tibble$UMAP_2)
+distances <- pointDistance(ad_xy, lonlat = F)
+distances[which(distances == 0)] <- NA
+
+#check that no points have identical coordinates
+sum(is.na(distances)) == nrow(distances)
+```
+
+    ## [1] TRUE
+
+``` r
+bestdist <- vector(mode = "numeric", length = nrow(distances))
+for (i in 1:nrow(distances)) {
+  bestdist[i] <- which(distances[i,] == min(distances[i,], na.rm=T))
+  if (i == 1) {
+    best_tibble <- ad_tibble[bestdist[i],]
+  } else if (i == nrow(distances)) {
+    newline <- ad_tibble[bestdist[i],]
+    best_tibble <- bind_rows(best_tibble, newline) %>% rename(bname = name,
+                                                    bUMAP_1 = UMAP_1,
+                                                    bUMAP_2 = UMAP_2,
+                                                    brep = rep,
+                                                    bslice = slice,
+                                                    bdim = dim,
+                                                    bdimrep = dimrep,
+                                                    bslice_fct = slice_fct,
+                                                    bdimrep_fct = dimrep_fct,
+                                                    bindex = index)
+  } else {
+    newline <- ad_tibble[bestdist[i],]
+    best_tibble <- bind_rows(best_tibble, newline)
+  }
+}
+
+best_friends <- bind_cols(ad_tibble, best_tibble) %>%
+  mutate(same_dim = ifelse(dim == bdim, T, F),
+         same_rep = ifelse(rep == brep, T, F),
+         slice_diff = abs(slice - bslice),
+         dimdim = paste(dim, bdim, sep = "_"),
+         dist = sqrt((UMAP_1 - bUMAP_1)^2) + (UMAP_2 - bUMAP_2)^2)
+
+ggplot(best_friends) +
+  geom_histogram(aes(dist)) +
+  geom_vline(xintercept = mean(best_friends$dist), 
+             color = "red", linetype = 2) +
+  geom_vline(xintercept = median(best_friends$dist), 
+             color = "blue", linetype = 2) +
+  ggtitle("Histogram of distance between closest points", 
+          subtitle = "Median is blue, Mean is red")
+```
+
+    ## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+``` r
+ggplot(best_friends) +
+  geom_bar(aes(same_dim)) +
+  ggtitle("Neighbors are typically from same dimension")
+```
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-4-2.png)<!-- -->
+
+``` r
+ggplot(best_friends %>% filter(same_dim == T)) +
+  geom_bar(aes(same_rep)) +
+  ggtitle("Neighbors from same dim are typically not from same replicate")
+```
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-4-3.png)<!-- -->
+
+``` r
+ggplot(best_friends %>% filter(same_dim == T) %>% filter(same_rep == F)) +
+  geom_jitter(aes(slice, bslice)) +
+  ggtitle("Neighbors from same dim but diff rep, are typically from similar position")
+```
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-4-4.png)<!-- -->
+
+``` r
+#what about closest points that are not from same dim?
+ggplot(best_friends %>%
+         filter(same_dim == F) %>%
+         group_by(dimdim) %>% 
+         summarise(count = n()) %>% 
+         arrange(desc(count)) %>% 
+         mutate(dimdimfct = as_factor(dimdim))) +
+  geom_bar(aes(dimdimfct, count), stat= "identity") +
+  ggtitle("Neighbors from different dims are typically DV/ML hybrids")
+```
+
+    ## `summarise()` ungrouping output (override with `.groups` argument)
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-4-5.png)<!-- -->
+
+# make AP UMAP colored by replicate and labeled by position
+
+``` r
+ad_tibble <- tibble(name = rownames(reducedDim(ad_umap)), 
+                      UMAP_1 = ad_umap_rd$V1, UMAP_2 = ad_umap_rd$V2) %>%
+  left_join(ad_covars, by = "name") %>%
+  mutate(slice_fct = as_factor(slice),
+         dimrep_fct = as_factor(dimrep),
+         numlab = ifelse(slice == 1, 
+                    1, ifelse(slice == 5,
+                         5, ifelse(slice == 10,
+                              10, ifelse(slice == 15,
+                                    15, ifelse(slice == 20, 
+                                          20, ifelse(slice == 23, 
+                                                     23, NA)))))))
+
+ad_umap_plot <- ggplot(ad_tibble) + 
+  geom_point(aes(UMAP_1, UMAP_2, fill = dimrep_fct),
+             size = 6, pch = 21, color = "black") +
+  geom_label_repel(aes(UMAP_1, UMAP_2, label = numlab)) + 
+  scale_fill_viridis_d() +
+  theme_cowplot() +
+  ggtitle("UMAP of OR Gene Expression", 
+          subtitle = paste0(as.character(dim(ad_trim)[2]), 
+                            " AP sections from 6 mice")) + 
+  theme(legend.position = "none") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")  +
+  facet_wrap(~ dimrep)
 ```
 
 ## previously run UMAP for AP dimension
@@ -274,7 +439,7 @@ plotPCA(
 
     ## Warning: call 'runPCA' explicitly to compute results
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ``` r
 sc3_plot_consensus(
@@ -288,19 +453,19 @@ sc3_plot_consensus(
 
     ## Provided columns 'log10_total_features' do not exist in the phenoData table!
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-2.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-2.png)<!-- -->
 
 ``` r
 sc3_plot_silhouette(sce_sc3, k = 5)
 ```
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-3.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-3.png)<!-- -->
 
 ``` r
 sc3_plot_expression(sce_sc3, k = 5)
 ```
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-4.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-4.png)<!-- -->
 
 ``` r
 sc3_plot_cluster_stability(sce_sc3, k = 5)
@@ -310,7 +475,7 @@ sc3_plot_cluster_stability(sce_sc3, k = 5)
 
     ## Warning: Use of `d$Stability` is discouraged. Use `Stability` instead.
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-5.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-5.png)<!-- -->
 
 ``` r
 sc3_plot_de_genes(
@@ -324,7 +489,7 @@ sc3_plot_de_genes(
 
     ## Provided columns 'log10_total_features' do not exist in the phenoData table!
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-6.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-6.png)<!-- -->
 
 ``` r
 sc3_plot_markers(
@@ -338,4 +503,88 @@ sc3_plot_markers(
 
     ## Provided columns 'log10_total_features' do not exist in the phenoData table!
 
-![](obmap_scstyle_files/figure-gfm/unnamed-chunk-8-7.png)<!-- -->
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-10-7.png)<!-- -->
+
+# Prep single cell experiment for ORs as samples
+
+``` r
+or_dim <- allchemo_tpm %>% select(starts_with("Olfr"))
+or_names <- colnames(or_dim)
+
+or_trim <- or_dim %>% as.matrix()
+colnames(or_trim) <- or_names
+or_trim[1:5,1:5]
+```
+
+    ##      Olfr299 Olfr109 Olfr281 Olfr1015 Olfr1347
+    ## [1,]    0.00    0.00    0.33     5.77      0.0
+    ## [2,]  277.35    0.00  602.80   228.19      0.3
+    ## [3,]    0.00   99.66 2451.54     0.11      0.0
+    ## [4,]    0.00    0.00 1882.25   340.79      0.0
+    ## [5,]    0.00    0.00 2612.72     0.00      0.0
+
+``` r
+coldata_or <- data.frame("cell_type1" = c(1:length(or_names)))
+rownames(coldata_or) <- or_names
+
+or_sce <- SingleCellExperiment(
+    assays = list(
+        counts = as.matrix(or_trim),
+        logcounts = log2(as.matrix(or_trim) + 1)
+    ), 
+    colData = coldata_or
+)
+
+rowData(or_sce)$feature_symbol <- rownames(or_sce)
+
+#UMAP
+or_umap <- runUMAP(or_sce)
+plotUMAP(or_umap, colour_by = "cell_type1")
+```
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+``` r
+lancet <- read_csv("~/Downloads/lancet_mouseORnames.csv")
+```
+
+    ## 
+    ## ── Column specification ────────────────────────────────────────────────────────
+    ## cols(
+    ##   Symbol = col_character(),
+    ##   Pseudo = col_double(),
+    ##   Olfrname = col_character(),
+    ##   alias = col_character()
+    ## )
+
+``` r
+or_rd <- reducedDim(or_umap) %>% as_tibble()
+or_umap_tibble <- tibble(Olfrname = rownames(reducedDim(or_umap)), 
+                      UMAP_1 = or_rd$V1, UMAP_2 = or_rd$V2) %>%
+  left_join(lancet, by = "Olfrname") %>% 
+  rename(olfrname = Olfrname) %>%
+  left_join(info, by = "olfrname") %>%
+  select(olfrname:class, fisurface, tan_zone) %>%
+  mutate(symfam = as.numeric(str_extract(Symbol, "[0-9]+")),
+         orsort = 1:n()) %>%
+  arrange(class) %>%
+  mutate(csort = 1:n()) %>%
+  arrange(symfam) %>%
+  mutate(sfsort = 1:n()) %>%
+  arrange(orsort) %>%
+  filter(!is.na(class)) %>%
+  filter(!is.na(symfam))
+
+ggplot(or_umap_tibble) + 
+  geom_point(aes(UMAP_1, UMAP_2, fill = as_factor(symfam)),
+             size = 2, pch = 21, color = "black") +
+  scale_fill_viridis_d() +
+  theme_cowplot() +
+  ggtitle("ORs by family (color)", 
+          subtitle = "Is that a fish?") + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  theme(legend.position = "none")
+```
+
+![](obmap_scstyle_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->

@@ -1,8 +1,8 @@
 ---
-title: "obmap_enrichment_effect"
+title: "OB capture enrichment"
 author: "kanazian"
-date: "Nov 23, 2020"
-output: html_document
+date: "`r Sys.Date()`"
+output: github_document
 always_allow_html: true
 ---
 
@@ -17,15 +17,22 @@ library(heatmaply)
 rawdat <- read_csv("~/Desktop/obmap/r_analysis/capture_enrichment/obmap_enrichmenteffect_gen25.csv") %>%
   filter(!is.na(gene_name)) %>%
   mutate(isOR = str_detect(gene_name, "Olfr"),
-         isPS = str_detect(gene_name, "-ps"))
+         isPS = str_detect(gene_name, "-ps"),
+         isTaar = str_detect(gene_name, "Taar"),
+         isORTaar = isOR + isTaar)
 
 ectopic <- c("Olfr287","Olfr32")
 olfrs_nops <- rawdat %>% filter(isOR == T) %>% filter(isPS == F)
 olfrs <- olfrs_nops %>% filter(!(gene_name %in% ectopic)) %>% select(-ens_raw, -ens_id)
+olfrstaars <- rawdat %>% 
+  filter(isORTaar == T) %>% 
+  filter(isPS == F) %>% 
+  filter(!(gene_name %in% ectopic)) %>%
+  select(-ens_raw, ens_id)
 ```
 
 
-# check enrichment effect
+# check fold enrichment
 ```{r}
 olfrs %>% ggplot() +
   geom_point(aes(M6nocapOB, M6OB))
@@ -168,11 +175,60 @@ maPlot(rawdat$NC_10Ar2, rawdat$OC_10Ar2)
 maPlot(olfrs$NC_10Ar2, olfrs$OC_10Ar2)
 
 #best biological replicate - just ORs
-maPlot(olfrs$M4OB, olfrs$M4OBcap)
+maPlot(olfrs$M4OB, olfrs$M14XOB)
+```
+
+#use m6nocap and m6cap samples (1-24, OB) to determine which ORs dropout 
+```{r}
+m6samples <- olfrstaars %>% select(gene_name, contains("M6"))
+
+m6nocap <- m6samples %>% select(gene_name, contains("nocap"))
+m6nocapSum <- m6nocap %>% 
+  select(-gene_name, -M6nocapOB) %>% 
+  mutate(noCapSum = rowSums(.)) %>% 
+  pull(noCapSum) 
+
+m6cap <- m6samples %>% 
+  select(gene_name, !contains("nocap")) %>% 
+  select(gene_name, contains("S"), M6OB)
+m6capSum <- m6cap %>% 
+  select(-gene_name, -M6OB) %>% 
+  mutate(capSum = rowSums(.)) %>% 
+  pull(capSum)
+
+m6compare <- tibble(gene = m6samples$gene_name,
+                    noCap = m6nocapSum,
+                    Cap = m6capSum,
+                    noCapOB = m6samples$M6nocapOB,
+                    CapOB = m6samples$M6OB) %>%
+  mutate(secComp = ifelse(Cap > noCap, 
+                          100, ifelse(Cap == noCap,
+                                    10, 0)),
+         obComp = ifelse(CapOB > noCapOB, 
+                         100, ifelse(CapOB == noCapOB,
+                                   10, 0)),
+         accord = secComp + obComp,
+         status = ifelse(accord == 200, "Enriched", 
+                    ifelse(accord == 110, "Likely_enriched", 
+                      ifelse(accord == 100, "Variable", 
+                        ifelse(accord == 20, "Even", 
+                          ifelse(accord < 20, "Dropout", NA))))),
+         enriched = str_detect(tolower(status), "enriched"))
+
+notEnriched <- m6compare %>% filter(enriched == F)
+notEnrORs <- notEnriched %>% pull(gene)
+paste0("There are ", length(notEnrORs), " non-enriched ORs")
+
+ggplot(notEnriched) +
+  geom_point(aes(noCap, Cap, color = enriched))
+
+ggplot(notEnriched) +
+  geom_point(aes(noCapOB, CapOB, color = enriched))
 ```
 
 
 # fold enrichment using genomic DNA controls
+b6gen samples not included in the updated set of gencode v25 samples due to being 25bp PE
 ```{r, eval=F}
 b6dna <- olfrs %>% select(gene_id, b6cap100, b6nocap7, b6nocap9, m4cap, m4uncap, M6OB, M6nocapOB) %>% mutate(foldenr7 = b6cap100/(b6nocap7 + 0.1), foldenrm4 = m4cap/(m4uncap + 0.1), foldenrm6 = M6OB/(M6nocapOB + 0.1)) %>% arrange(desc(foldenrm6)) %>% mutate(order = factor(gene_id, gene_id))
 
