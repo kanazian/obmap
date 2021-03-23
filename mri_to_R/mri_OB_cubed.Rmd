@@ -1,8 +1,8 @@
 ---
 title: "MRI OB model in cubegrid"
 author: "kanazian"
-date: "Sep 28, 2020"
-output: github_document
+date: "`r Sys.Date()`"
+output: html_document
 always_allow_html: true
 ---
 # Goal: 
@@ -12,7 +12,7 @@ Generate 3D voxel coordinates representing the outer surface (roughly the glomer
 1. Downloaded MRI model (.nii) from Duke CIVM voxport, Microscopic DTI of mouse brain (PMC3085633)
 2. Converted .nii to .stl (common 3d print format) following this guide: https://layerfmri.com/2018/07/25/3d-printing-nii-data/
 3. Loaded .stl into Blender
-4. Created an array of cubes matching the # of sections taken for targeted transcriptomics of each dimension, 27 Anterior-Posterior, 24 Medial-Lateral, 23 Ventral-Dorsal. This cube array was stretched in each dimension to encompass the entire OB due to difference in age between MRI study (p66-78) and our (p21) mice. OB was tilted slightly in order to better represent the less erect nature of the OB after the OE is removed in our dissection
+4. Created an array of cubes matching the # of sections taken for targeted transcriptomics of each dimension, 24 Anterior-Posterior, 22 Medial-Lateral, 23 Ventral-Dorsal. This cube array was stretched in each dimension to encompass the entire OB due to difference in age between MRI study (p66-78) and our (p21) mice. OB was tilted slightly in order to better represent the less erect and more elongated nature of the OB after the OE is removed in our dissection
 5. Output OB and cubegrid as .ply files
 
 ## Plan:
@@ -33,6 +33,39 @@ library(geomorph)
 library(plotly)
 library(tidyverse)
 library(knitr)
+
+OBplot <- function(df) {
+  obplot <- plot_ly(df, x=~MedLat, y=~AntPos, z=~VenDor, 
+                    color=~type, 
+                    marker=list(size = 6, 
+                                line = list(color = 'black', width = 0.5)), 
+                    text=~paste("AP:", AntPos,
+                                "<br>ML:", MedLat,
+                                "<br>VD:", VenDor,
+                                "<br>Type:", type), 
+                    type='scatter3d', mode='markers') 
+  return(obplot)
+} #end OBplot
+
+#df is a tibble containing at least three columns named AntPos, MedLat, and VenDor whose values exceed desired limits
+#ap, ml, vd are integers indicating the desired length for that dimension
+Rescale <- function(df, ap, ml, vd) {
+  apscale <- ap/max(df$AntPos)
+  mlscale <- ml/max(df$MedLat)
+  vdscale <- vd/max(df$VenDor)
+  rescaled <- df %>% 
+    select(AntPos, MedLat, VenDor) %>% 
+    mutate(newAP = AntPos * apscale,
+           newML = MedLat * mlscale,
+           newVD = VenDor * vdscale,
+           APint = round(newAP),
+           MLint = round(newML),
+           VDint = round(newVD),
+           APd2i = round(newAP) - newAP,
+           MLd2i = round(newML) - newML,
+           VDd2i = round(newVD) - newVD)
+  return(rescaled)
+} #end Rescale
 ```
 
 
@@ -253,18 +286,18 @@ Find_Misses <- function(hits, all_voxels) {
 findMissOut_1 <- Find_Misses(getWeird, cube_grid)
 
 #plot round 1  
-plot_ly(findMissOut_1, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+OBplot(findMissOut_1)
 ```
 
 
 ### Find Misses Round 2: The Sequel
 ```{r}
 findMissOut_2 <- Find_Misses(findMissOut_1, cube_grid)
-plot_ly(findMissOut_2, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+OBplot(findMissOut_2)
 
 #adding points that DONT have 2 cardinal neighbors aka wont be found in Find_Misses
 findMissOut_3 <- findMissOut_2 %>% add_row(AntPos = 22, MedLat = 3, VenDor = 21, type="add")
-plot_ly(findMissOut_3, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+OBplot(findMissOut_3)
 ```
 
 
@@ -290,7 +323,7 @@ for (i in seq(range(most_medial$AntPos)[1],range(most_medial$AntPos)[2])) {
 border_wall <- as_tibble(border_wall) %>% rename("AntPos" = Var1, "MedLat" = Var2, "VenDor" = Var3) %>% mutate(type = "Wall") %>% filter(AntPos > 0)
 
 walled <- bind_rows(findMissOut_3, border_wall)
-plot_ly(walled, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+OBplot(walled)
 ```
 
 
@@ -300,7 +333,7 @@ plot_ly(walled, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size =
 #try to avoid multi dimensions, lets instead move along the anterior posterior 
 inner_layer <- tibble(AntPos = 0, MedLat = 0, VenDor = 0, type = "init")
 
-for (cube in 1:dim(walled)[1]) {
+for (cube in 1:nrow(walled)) {
   if (walled$AntPos[cube] == 1) {
     #if front wall, add a cube directly posterior
     inner_layer <- inner_layer %>% add_row(AntPos = 2, MedLat = walled$MedLat[cube], VenDor = walled$VenDor[cube], type = "F")
@@ -328,15 +361,153 @@ inner <- inners_dups[-which(duplicated(inners_dups)==TRUE),]
 outer <- walled %>% select(-type) %>% mutate(type = "outer") 
 like_an_onion <- bind_rows(outer, inner)
 
-plot_ly(like_an_onion, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+OBplot(like_an_onion)
+
+#saveRDS(like_an_onion, "~/Desktop/obmap/r_analysis/mri_to_R/output/190218_outer_inner_coords.RDS")
 ```
 
 
-# Export for incorporation with OBMap
-```{r, eval=F}
-saveRDS(like_an_onion, "~/Desktop/obmap/r_analysis/mri_to_R/output/190218_outer_inner_coords.RDS")
+# adjusting for alt models
+Scale from full dim down to model dim
+Find way to add gloms to medial wall - add concave curve to medial surface
+```{r}
+#take anterior of AP26, remove odd looking strip from Dorsal-Medial edge
+trim_to25 <- like_an_onion %>% filter(AntPos <= 25) %>% filter(type == "outer") %>% mutate(oddstrip = ifelse(MedLat == 1, ifelse(VenDor == 21, T, F), F)) %>% filter(oddstrip == F) %>% select(-oddstrip) %>% mutate(origin = "oniontrim25") %>% mutate(type2 = ifelse(VenDor == 1, "outer", type)) %>% select(-type) %>% rename(type = type2) %>% filter(!(AntPos == 20 & MedLat == 2 & VenDor == 22)) %>% filter(!(AntPos == 24 & MedLat == 8 & VenDor == 23))
+OBplot(trim_to25)
+
+# actually looks a little too thick 
+# check14 <- trim_to25 %>% filter(AntPos == 14)
+# plot_ly(data=check14, x=~MedLat, y=~AntPos, z=~VenDor, color=~type, marker=list(size = 6, line = list(color = 'black', width = 0.5)), text=~paste("Type:", type), type='scatter3d', mode='markers')
+
+#fill in posterior bits missing between AP20-25
+backbit <- trim_to25 %>% filter(AntPos > 20)
+fillpost <- tibble(AntPos = 0, MedLat = 0, VenDor = 0, type = "init")
+for (i in 1:nrow(backbit)) {
+  positions <- c(backbit$AntPos[i], backbit$MedLat[i], backbit$VenDor[i])
+  typei <- backbit$type[i]
+  if (positions[3] == 23) {
+    next
+  } else if (positions[2] == 24) {
+    next
+  }
+  if (backbit %>% filter(AntPos == positions[1] + 1 & 
+                         MedLat == positions[2] & 
+                         VenDor == positions[3]) %>% nrow() == 0) {
+    for (j in positions[1]:25) {
+      fillpost <- fillpost %>% add_row(AntPos = j, MedLat = positions[2], VenDor = positions[3], type = typei)
+    } #endfor
+  } #endif
+} #endfor
+
+fillpostout <- fillpost %>% mutate(origin = "fillpost") %>% filter(type != "init")
+
+trimpost <- bind_rows(trim_to25, fillpostout)
+OBplot(trimpost)
+
+#AP26 will be projected posterior and interior to AP25
+just25 <- trimpost %>% filter(AntPos == 25)
+
+#create an inside ring based on direction to mean ML/VD point of AP section
+ring26 <- just25 %>% select(-AntPos) %>% mutate(AntPos = 26) %>% select(AntPos, everything())
+meanVD26 <- mean(ring26$VenDor)
+meanML26 <- mean(ring26$MedLat)
+
+inside26 <- tibble(AntPos = 0, MedLat = 0, VenDor = 0, type = "init")
+#set VD1 ML bounds for AP26
+ventral_minML26 <- ring26 %>% filter(VenDor == 2) %>% pull(MedLat) %>% min()
+ventral_maxML26 <- ring26 %>% filter(VenDor == 2) %>% pull(MedLat) %>% max()
+for (i in 1:nrow(ring26)) {
+  positions <- c(ring26$AntPos[i], ring26$MedLat[i], ring26$VenDor[i])
+  sign_newVD <- sign(positions[3] - meanVD26) #if positive, new point goes ventral
+  sign_newML <- sign(positions[2] - meanML26) #if positive, new point goes medial
+  pos_newVD <- ifelse(sign_newVD == 1, positions[3]-1, positions[3]+1)
+  pos_newML <- ifelse(sign_newML == 1, positions[2]-1, positions[2]+1)
+  if (positions[3] > 2) {
+    inside26 <- inside26 %>% add_row(AntPos = 26, MedLat = pos_newML, VenDor = pos_newVD, type = "outer")
+  } else if (positions[3] == 2) {
+    inside26 <- inside26 %>% add_row(AntPos = 26, MedLat = pos_newML, VenDor = pos_newVD, type = "outer")
+    inside26 <- inside26 %>% add_row(AntPos = 26, MedLat = pos_newML, VenDor = 2, type = "outer")
+  }
+}
+ven26floor <- tibble(AntPos = 26, MedLat = (ventral_minML26 + 1):(ventral_maxML26 - 1), 
+                   VenDor = 1, type = "outer")
+
+inside26out <- bind_rows(inside26, ven26floor) %>% mutate(origin = "add26") %>% filter(type != "init")
+
+#do the same for AP27
+ring27 <- inside26out %>% select(-AntPos) %>% mutate(AntPos = 27) %>% select(AntPos, everything())
+meanVD27 <- mean(ring27$VenDor)
+meanML27 <- mean(ring27$MedLat)
+
+inside27 <- tibble(AntPos = 0, MedLat = 0, VenDor = 0, type = "init")
+#set VD1 ML bounds for AP27
+ventral_minML27 <- ring27 %>% filter(VenDor == 1) %>% pull(MedLat) %>% min()
+ventral_maxML27 <- ring27 %>% filter(VenDor == 1) %>% pull(MedLat) %>% max()
+for (i in 1:nrow(ring27)) {
+  positions <- c(ring27$AntPos[i], ring27$MedLat[i], ring27$VenDor[i])
+  sign_newVD <- sign(positions[3] - meanVD27) #if positive, new point goes ventral
+  sign_newML <- sign(positions[2] - meanML27) #if positive, new point goes medial
+  pos_newVD <- ifelse(sign_newVD == 1, positions[3]-1, positions[3]+1)
+  pos_newML <- ifelse(sign_newML == 1, positions[2]-1, positions[2]+1)
+  if (positions[3] > 2) {
+    inside27 <- inside27 %>% add_row(AntPos = 27, MedLat = pos_newML, VenDor = pos_newVD, type = "outer")
+  } else if (positions[3] == 2) {
+    inside27 <- inside27 %>% add_row(AntPos = 27, MedLat = pos_newML, VenDor = pos_newVD, type = "outer")
+    inside27 <- inside27 %>% add_row(AntPos = 27, MedLat = pos_newML, VenDor = 2, type = "outer")
+  }
+}
+ven27floor <- tibble(AntPos = 27, MedLat = (ventral_minML27 + 1):(ventral_maxML27 - 1), 
+                   VenDor = 1, type = "outer")
+
+inside27out <- bind_rows(inside27, ven27floor) %>% mutate(origin = "add27") %>% filter(type != "init")
+
+check_expand <- bind_rows(just25, inside26out) %>% bind_rows(inside27out)
+OBplot(check_expand)
+
+trim_expand <- bind_rows(trimpost, check_expand)
+OBplot(trim_expand)
 ```
 
 
-# Todo
-Clearly some problems with creation of the inner layer.  Need to add if statements to deal with outer voxels that lie on a curve.
+#make concave medial wall
+COULD ALSO REDUCE MEDIAL WALL SIZE BY SLOPING THE MORE MEDIAL SECTIONS causing the medial wall to begin at a lower dorsal ceiling and higher ventral floor, would probably remove ~40 voxels or ~12%
+```{r}
+medwallout <- trim_expand %>% filter(MedLat == 1)
+medwallin <- trim_expand %>% filter(MedLat == 2)
+medwallin_outtype <- medwallin %>% filter(type == "outer")
+
+medwalloutcc <- medwallout %>% mutate(cc = ifelse(between(VenDor, 13, 15), 
+                                                  ifelse(between(AntPos, 3, 26),
+                                                         T, F), F))
+medwallcc <- medwalloutcc %>% filter(cc == T) %>% select(-MedLat) %>% mutate(MedLat = 2)
+
+newmedwallout <- medwalloutcc %>% filter(cc == F)
+
+newmedwall <- bind_rows(newmedwallout, medwallcc)
+
+trimpost_nomed <- trim_expand %>% filter(MedLat >= 3)
+trimpost_newmed <- bind_rows(trimpost_nomed, newmedwall) %>% bind_rows(medwallin_outtype)
+OBplot(trimpost_newmed)
+```
+
+# scale to AP23, ML22, VD23
+```{r}
+#rescale OB with concave medial wall
+rescaledcc <- Rescale(trimpost_newmed, 23, 22, 23)
+rescaledcc_out <- tibble(AntPos = rescaledcc$APint, 
+                         MedLat = rescaledcc$MLint, 
+                         VenDor = rescaledcc$VDint, type = "concave_medwall") %>%
+  unique()
+OBplot(rescaledcc_out)
+#saveRDS(rescaledcc_out, "~/Desktop/obmap/r_analysis/mri_to_R/output/210310_cubegrid_rescaled_concaveMedial_outeronly.RDS")
+
+#rescale OB with straight medial wall
+rescaled <- Rescale(trim_expand, 23, 22, 23)
+rescaled_out <- tibble(AntPos = rescaled$APint, 
+                         MedLat = rescaled$MLint, 
+                         VenDor = rescaled$VDint, type = "straight_medwall") %>%
+  unique()
+OBplot(rescaled_out)
+#saveRDS(rescaled_out, "~/Desktop/obmap/r_analysis/mri_to_R/output/210310_cubegrid_rescaled_outeronly.RDS")
+```
+

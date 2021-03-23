@@ -25,12 +25,17 @@ library(plotly)
 library(tidyverse)
 library(cowplot)
 library(uwot)
+library(magrittr)
 
 #functions
 #x is a vector of tpm values for an OR across samples
 NormalizeMaxMin <- function(x) {
+  if (max(x) == 0) {
+    return(x)
+  } else {
   #x needs to be pseudocounted
   (x-min(x))/(max(x)-min(x))
+  }
 } #end NormalizeMaxMin
 
 GeoMean <- function(x, na.rm=TRUE) {
@@ -56,23 +61,12 @@ NormTPM <- function(df_tpm) {
   return(x_norm)
 } # end NormTPM
 
-#given normalized data and a list with "gene" and "sortrank" column, sort the normalized data
-#list must have ORs in "gene" column and rank in "sortrank" column
-SortByList <- function(df_norm, list) {
-  df_tib <- as_tibble(df_norm)
-  df_tib$gene <- rownames(df_norm)
-  df_info <- left_join(df_tib, list, by = "gene") %>% arrange(sortrank)
-  df_matrix <- t(t(df_info %>% select(-gene, -sortrank, -wavgs)))
-  rownames(df_matrix) <- df_info$gene
-  return(df_matrix)
-} #end SortByList
-
 #given tpm data, apply factors based on kallisto quantified OMP values
 Ompnormify <- function(df_tpm) {
   soi <- df_tpm %>% select(-slice) %>% t()
   soi <- soi + 0.25
   for (i in 1:ncol(soi)) {
-    soi[,i] = soi[,i] / ompNorms[i]
+    soi[,i] <- soi[,i] / ompNorms[i]
   } #endfor
   soi_norm <- matrix(nrow = nrow(soi), ncol = ncol(soi))
   for (i in 1:nrow(soi)) {
@@ -86,7 +80,7 @@ Ompnormify <- function(df_tpm) {
 #given tpm data, apply factors based on OB shape from MRI model
 Voxnormify <- function(df_tpm, voxweights) {
   soi <- df_tpm %>% select(-slice) %>% t()
-  soi <- soi + 0.25
+  #soi <- soi + 0.25
   for (i in 1:ncol(soi)) {
     soi[,i] <- soi[,i] * voxweights$weight[i]
   } #endfor
@@ -95,16 +89,83 @@ Voxnormify <- function(df_tpm, voxweights) {
     soi_norm[i,] <- NormalizeMaxMin(soi[i,])
   } #endfor
   colnames(soi_norm) <- df_tpm$slice
-  ornames <- rownames(soi)
-  rownames(soi_norm) <- ornames
+  rownames(soi_norm) <- rownames(soi)
   return(soi_norm)
 } #end Voxnormify
 
-normNormDF4 <- function(df1, df2, df3, df4) {
-  df_merge <- matrix(nrow = nrow(df1), ncol = ncol(df1))
-  for (i in 1:ncol(df1)) {
-    df_merge[,i] <- df1[,i] + df2[,i] + df3[,i] + df4[,i]
-  } #endfor
+#... are a set of identical dimension DFs
+normNormDF <- function(..., calc = "mean", median4 = "use4") {
+  args <- list(...)
+  if (calc == "mean") {
+    if (length(args) == 4) {
+      df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+      for (i in 1:ncol(args[[1]])) {
+        df_merge[,i] <- args[[1]][,i] + args[[2]][,i] + args[[3]][,i] + args[[4]][,i]
+      } #endfor
+    } else if (length(args) == 3) {
+      df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+      for (i in 1:ncol(args[[1]])) {
+        df_merge[,i] <- args[[1]][,i] + args[[2]][,i] + args[[3]][,i]
+      } #endfor
+    } else {
+      print("This function is poorly written, can only take input of 3 or 4 DFs")
+    } #endif
+    
+  } else if (calc == "median") {
+    if (length(args) == 5) {
+      df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+      for (i in 1:ncol(args[[1]])) {
+        for (j in 1:nrow(args[[1]])) {
+          df_merge[j,i] <- median(c(args[[1]][j,i], args[[2]][j,i],
+                                    args[[3]][j,i], args[[4]][j,i],
+                                    args[[5]][j,i]))
+        } #endforj
+      } #endfori
+    } else if (length(args) == 4) {
+      if (median4 == "use4") {
+        df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+        for (i in 1:ncol(args[[1]])) {
+          for (j in 1:nrow(args[[1]])) {
+            # add a 0 val in order to avoid even numbered median being mean of 3rd and 4th value
+            df_merge[j,i] <- median(c(args[[1]][j,i], args[[2]][j,i],
+                                      args[[3]][j,i], args[[4]][j,i]))
+          } #endforj
+        } #endfori
+      } else if (median4 == "add0") {
+        df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+        for (i in 1:ncol(args[[1]])) {
+          for (j in 1:nrow(args[[1]])) {
+            # add a 0 val in order to avoid even numbered median being mean of 3rd and 4th value
+            df_merge[j,i] <- median(c(0, args[[1]][j,i], args[[2]][j,i],
+                                      args[[3]][j,i], args[[4]][j,i]))
+          } #endforj
+        } #endfori
+      }else if (median4 == "addmean") {
+        df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+        for (i in 1:ncol(args[[1]])) {
+          for (j in 1:nrow(args[[1]])) {
+            # add a 0 val in order to avoid even numbered median being mean of 3rd and 4th value
+            df_merge[j,i] <- median(c(args[[1]][j,i], args[[2]][j,i],
+                                      args[[3]][j,i], args[[4]][j,i],
+                                      mean(c(args[[1]][j,i], 
+                                             args[[2]][j,i],
+                                             args[[3]][j,i], 
+                                             args[[4]][j,i]))))
+          } #endforj
+        } #endfori
+      } #endif median4
+    } else if (length(args) == 3) {
+      df_merge <- matrix(nrow = nrow(args[[1]]), ncol = ncol(args[[1]]))
+      for (i in 1:ncol(args[[1]])) {
+        for (j in 1:nrow(args[[1]])) {
+          df_merge[j,i] <- median(c(args[[1]][j,i], args[[2]][j,i], 
+                                    args[[3]][j,i]))
+        } #endforj
+      } #endfori
+    } else {
+      print("This function is poorly written, can only take input of 3 or 4 DFs")
+    } #endif length
+  } #endif cal
   
   #normalize merged normalized values
   merge_vals <- df_merge
@@ -114,37 +175,24 @@ normNormDF4 <- function(df1, df2, df3, df4) {
   } #endfor
   
   #name rows and columns
-  colnames(merge_norm) <- colnames(df1)
-  rownames(merge_norm) <- rownames(df1)
+  colnames(merge_norm) <- colnames(args[[1]])
+  rownames(merge_norm) <- rownames(args[[1]])
   return(merge_norm)
-} #end normNormDF4
-
-#need to learn how to do ... args
-normNormDF3 <- function(df1, df2, df3) {
-  df_merge <- matrix(nrow = nrow(df1), ncol = ncol(df1))
-  for (i in 1:ncol(df1)) {
-    df_merge[,i] <- df1[,i] + df2[,i] + df3[,i]
-  } #endfor
-  
-  #normalize merged normalized values
-  merge_vals <- df_merge
-  merge_norm <- matrix(nrow = nrow(merge_vals), ncol = ncol(merge_vals))
-  for (i in 1:nrow(merge_vals)) {
-    merge_norm[i,] <- NormalizeMaxMin(merge_vals[i,])
-  } #endfor
-  
-  #name rows and columns
-  colnames(merge_norm) <- colnames(df1)
-  ornames <- rownames(df1)
-  rownames(merge_norm) <- ornames
-  return(merge_norm)
-} #end normNormDF3
+} #end normNormDF
 
 #given a set of normalized values, merge them into 1 df, renormalize, sort, return sortlist
-MakeSort4 <- function(df1, df2, df3, df4, method = "posmean") {
-  merge_norm <- normNormDF4(df1, df2, df3, df4)
+MakeSort <- function(..., method = "posmean") {
+  args <- list(...)
+  if (length(args) == 4) {
+    merge_norm <- normNormDF(args[[1]], args[[2]], args[[3]], args[[4]])
+  } else if (length(args) == 3) {
+    merge_norm <- normNormDF(args[[1]], args[[2]], args[[3]])
+  } else {
+    print("This function is poorly written, can only take input of 3 or 4 DFs")
+  }#endif
+  
   merge_bin <- merge_norm
-  ornames <- rownames(df1)
+  ornames <- rownames(args[[1]])
   
   if (method == "kzsort") {
     #sort based on position of maximum expression section and 
@@ -217,87 +265,18 @@ MakeSort4 <- function(df1, df2, df3, df4, method = "posmean") {
       mutate(sortrank = 1:length(ornames))
   } #endif
   return(sorttable)
-} #end MakeSort4
+} #end MakeSort
 
-#given a set of normalized values, merge them into 1 df, renormalize, sort, return sortlist
-MakeSort3 <- function(df1, df2, df3, method = "posmean") {
-  merge_norm <- normNormDF3(df1, df2, df3)
-  merge_bin <- merge_norm
-  ornames <- rownames(df1)
-  
-  if (method == "kzsort") {
-    #sort based on position of maximum expression section and 
-    #distance to the mean of positions for the three highest expression sections
-    #higher distances being placed further away, no management for ties.
-    #create a maxsec variable
-    #anything lower than 1 becomes 0
-    merge_bin[merge_bin < 1] <- 0
-    maxsec <- vector(mode = "numeric", length = nrow(merge_bin))
-    for (i in 1:nrow(merge_bin)) {
-      for (s in 1:ncol(merge_bin)) {
-        if (merge_bin[i,s] == 1) {
-          maxsec[i] <- s
-        } #endif
-      } #endfor
-    } #endfor
-    
-    #find avg position of top 3 sections
-    avgpos3 <- vector(mode = "numeric", length = nrow(merge_bin))
-    for (i in 1:nrow(merge_bin)) {
-      avgpos3[i] <- mean(which(min_rank(desc(merge_norm[i,])) <= 3))
-    } #endfor
-    
-    max2avg <- vector(mode = "numeric", length = nrow(merge_bin))
-    for (i in 1:length(maxsec)) {
-      max2avg[i] <- abs(maxsec[i] - avgpos3[i])
-    } #endfor
-    
-    sorttable <- tibble(gene = ornames, maxsec, avgpos3, max2avg) %>% 
-      arrange(desc(maxsec, max2avg)) %>% 
-      mutate(sortrank = 1:length(ornames))
-    
-  } else if (method == "posmean") {
-    #weighted avg based on python code for "find_1_glom"
-    #weighted_avg = sum(x*y for x,y in zip(indexes,vals))/sum(vals) 
-    #zip(c(1,2,3), c("a","b","c")) = (1,"a"), (2,"b"), (3,"c")
-    secs <- c(1:23)
-    wavgs <- vector(mode = "numeric", length = nrow(merge_bin))
-    for (i in 1:nrow(merge_norm)) {
-      vals <- merge_norm[i,]
-      sumvals <- sum(vals)
-      prods <- vector(mode = "numeric", length = length(vals))
-      for (s in 1:length(vals)) {
-        prods[s] <- vals[s] * secs[s]
-      } #endfor
-      wavgs[i] <- sum(prods)/sumvals
-    } #endfor
-    
-    sorttable <- tibble(gene = ornames, wavgs) %>%
-      arrange(desc(wavgs)) %>%
-      mutate(sortrank = 1:length(ornames))
-    
-    
-  } else if (method == "123") {
-    #which secs are ranked 1,2,3
-    onesec <- vector(mode = "numeric", length = nrow(merge_norm))
-    for (i in 1:nrow(merge_norm)) {
-      onesec[i] <- which(min_rank(desc(merge_norm[i,])) == 2)
-    } #endfor
-    twosec <- vector(mode = "numeric", length = nrow(merge_norm))
-    for (i in 1:nrow(merge_norm)) {
-      twosec[i] <- which(min_rank(desc(merge_norm[i,])) == 2)
-    } #endfor
-    threesec <- vector(mode = "numeric", length = nrow(merge_norm))
-    for (i in 1:nrow(merge_norm)) {
-      threesec[i] <- which(min_rank(desc(merge_norm[i,])) == 3)
-    } #endfor
-    
-    sorttable <- tibble(gene = ornames, onesec, twosec, threesec) %>%
-      arrange(desc(onesec, twosec, threesec)) %>%
-      mutate(sortrank = 1:length(ornames))
-  } #endif
-  return(sorttable)
-} #end MakeSort3
+#given normalized data and a list with "gene" and "sortrank" column, sort the normalized data
+#list must have ORs in "gene" column and rank in "sortrank" column
+SortByList <- function(df_norm, list) {
+  df_tib <- as_tibble(df_norm)
+  df_tib$gene <- rownames(df_norm)
+  df_info <- left_join(df_tib, list, by = "gene") %>% arrange(sortrank)
+  df_matrix <- t(t(df_info %>% select(-gene, -sortrank, -wavgs)))
+  rownames(df_matrix) <- df_info$gene
+  return(df_matrix)
+} #end SortByList
 
 #given a normalized matrix, output old style Black(0) to Red(1) heatmaps
 MakeBlackRedHeatmap <- function(df_norm, title = NA) {
@@ -309,77 +288,127 @@ MakeBlackRedHeatmap <- function(df_norm, title = NA) {
   df_melt$target <- as.character(df_melt$target)
   df_melt$target <- factor(df_melt$target, levels=unique(df_melt$target))
   
+  plot <- ggplot(df_melt, aes(section, target)) +
+    geom_tile(aes(fill = normTPM), color = "grey") +
+    scale_fill_gradient2(low = "black", mid = "red", high = "red3", midpoint = 0.65) +
+    ylab("Olfr Genes") +
+    theme(legend.title = element_text(size = 11, vjust = 1),
+          legend.text = element_text(size = 7),
+          legend.position = "none", #none if you dont want expression level legend
+          plot.title = element_text(size = 24),
+          axis.title.x = element_text(size = 0, vjust = 50, face="bold"),
+          axis.title.y = element_text(size = 0, vjust = 0, face="bold"),
+          axis.text.x = element_text(angle = 330, hjust = 0, vjust = 2, size = 0),
+          axis.text.y = element_text(size = 0),
+          axis.ticks = element_blank()) +
+    labs(fill = "Expression Level")
+  
   if (is.na(title)) {
-    #HEAT DA MAP generic
-    plot <- ggplot(df_melt, aes(section, target, height = 3)) + 
-      geom_tile(aes(fill = normTPM), color = "grey") +
-      scale_fill_gradient2(low = "black", mid = "red", high = "red3", midpoint = 0.65) +
-      ylab("Olfr Genes") +
-      theme(legend.title = element_text(size = 11, vjust = 1),
-            legend.text = element_text(size = 7),
-            legend.position = "none", #none if you dont want expression level legend
-            plot.title = element_text(size = 24),
-            axis.title.x = element_text(size = 0, vjust = 50, face="bold"),
-            axis.title.y = element_text(size = 0, vjust = 0, face="bold"),
-            axis.text.x = element_text(angle = 330, hjust = 0, vjust = 2, size = 0),
-            axis.text.y = element_text(size = 0),
-            axis.ticks = element_blank()) +
-      labs(fill = "Expression Level")
     return(plot)
   } else {
-    #HEAT DA MAP generic
-    plot <- ggplot(df_melt, aes(section, target, height = 3)) + 
-      geom_tile(aes(fill = normTPM), color = "grey") +
-      scale_fill_gradient2(low = "black", mid = "red", high = "red3", midpoint = 0.65) +
-      ylab("Olfr Genes") +
-      theme(legend.title = element_text(size = 11, vjust = 1),
-            legend.text = element_text(size = 7),
-            legend.position = "none", #none if you dont want expression level legend
-            plot.title = element_text(size = 24),
-            axis.title.x = element_text(size = 0, vjust = 50, face="bold"),
-            axis.title.y = element_text(size = 0, vjust = 0, face="bold"),
-            axis.text.x = element_text(angle = 330, hjust = 0, vjust = 2, size = 0),
-            axis.text.y = element_text(size = 0),
-            axis.ticks = element_blank()) +
-      labs(fill = "Expression Level") + 
-      ggtitle(title)
+    plot <- plot + ggtitle(title)
     return(plot)
-  } #endif
+  }#endif
 } #end MakeBlackRedHeatmap
 
-#Make Black Red Heatmaps based on branch subsets
-MakeBLRHtree3 <- function(df1, df2, df3, tree, title = NA) {
-  treeset1 <- df1[which(rownames(df1) %in% tree),]
-  treeset2 <- df2[which(rownames(df2) %in% tree),]
-  treeset3 <- df3[which(rownames(df3) %in% tree),]
+#Make Black Red Heatmaps for small groups of ORs
+SubsetBLRH3 <- function(df1, df2, df3, subset, 
+                        title = NA, out = "heat", 
+                        sort = F, label = F) {
+  subset1 <- df1[which(rownames(df1) %in% subset),]
+  subset2 <- df2[which(rownames(df2) %in% subset),]
+  subset3 <- df3[which(rownames(df3) %in% subset),]
   
-  treesort <- MakeSort3(treeset1, treeset2, treeset3, method = "posmean")
+  merge <- normNormDF(subset1, subset2, subset3)
   
-  merge <- normNormDF3(treeset1, treeset2, treeset3)
-  mergesort <- SortByList(merge, treesort)
-  
-  p <- MakeBlackRedHeatmap(mergesort, title)
-  return(p)
-} #end MakeBLRHtree3
-
-MakeBLRHtree4 <- function(df1, df2, df3, df4, tree, title = NA, out = "heat") {
-  treeset1 <- df1[which(rownames(df1) %in% tree),]
-  treeset2 <- df2[which(rownames(df2) %in% tree),]
-  treeset3 <- df3[which(rownames(df3) %in% tree),]
-  treeset4 <- df4[which(rownames(df4) %in% tree),]
-  
-  treesort <- MakeSort4(treeset1, treeset2, treeset3, treeset4, method = "posmean")
-  
-  merge <- normNormDF4(treeset1, treeset2, treeset3, treeset4)
-  mergesort <- SortByList(merge, treesort)
+  if (sort == F) {
+    subsort <- tibble(gene = subset, sortrank = length(subset):1, wavgs = NA)
+    mergesort <- SortByList(merge, subsort)
+  } else if (sort == T) {
+    subsort <- MakeSort(subset1, subset2, subset3, method = "posmean")
+    mergesort <- SortByList(merge, subsort)
+  } #endif
   
   p <- MakeBlackRedHeatmap(mergesort, title)
   if (out == "heat") {
-    return(p)
+    if (label == T) {
+      p <- p  + theme(axis.text.y = element_text(size = 8))
+      return(p)
+    } else {
+      return(p)
+    } #endif
   } else if (out == "names") {
-  return(treesort)
+    return(subsort)
   } #endif
-}#end MakeBLRHtree4
+} #end SubsetBLRH3
+
+SubsetBLRH4 <- function(df1, df2, df3, df4, subset, 
+                        title = NA, out = "heat", 
+                        sort = F, label = F) {
+  subset1 <- df1[which(rownames(df1) %in% subset),]
+  subset2 <- df2[which(rownames(df2) %in% subset),]
+  subset3 <- df3[which(rownames(df3) %in% subset),]
+  subset4 <- df4[which(rownames(df4) %in% subset),]
+  
+  merge <- normNormDF(subset1, subset2, subset3, subset4)
+  
+  if (sort == F) {
+    subsort <- tibble(gene = subset, sortrank = length(subset):1, wavgs = NA)
+    mergesort <- SortByList(merge, subsort)
+  } else if (sort == T) {
+    subsort <- MakeSort(subset1, subset2, subset3, subset4, method = "posmean")
+    mergesort <- SortByList(merge, subsort)
+  } #endif
+  
+  p <- MakeBlackRedHeatmap(mergesort, title)
+  if (out == "heat") {
+    if (label == T) {
+      p <- p + theme(axis.text.y = element_text(size = 8))
+      return(p)
+    } else {
+      return(p)
+    } #endif
+  } else if (out == "names") {
+    return(subsort)
+  } #endif
+}#end SubsetBLRH4
+
+SubsetBLRH1 <- function(mX, olfrs, title = NA, out = "interactive") {
+  subheat <- SubsetBLRH3(mX, mX, mX, olfrs, 
+                         title = title, 
+                         out = "heat", sort = F, label = T) +
+    theme(plot.title = element_text(size = 12))
+  if (out == "heat") {
+    return(subheat)
+  } else if (out == "interactive") {
+    inter_subheat <- ggplotly(subheat)
+    return(inter_subheat)
+  }
+} #end SubsetBLRH1
+
+SubsetAllAP <- function(olfrs) {
+  ap4sub <- SubsetBLRH1(m4_Vnorm, olfrs, title = "m4AP", out = "heat") 
+  ap6sub <- SubsetBLRH1(m6_Vnorm, olfrs, title = "m6AP", out = "heat")
+  ap7sub <- SubsetBLRH1(m7_Vnorm, olfrs, title = "m7AP", out = "heat")
+  ap10sub <- SubsetBLRH1(m10_Vnorm, olfrs, title = "m10AP", out = "heat")
+  ap13sub <- SubsetBLRH1(m13_Vnorm, olfrs, title = "m13AP", out = "heat")
+  ap15sub <- SubsetBLRH1(m15_Vnorm, olfrs, title = "m15AP", out = "heat")
+  
+  allAPstacked <- (ap4sub / ap6sub / ap7sub / ap10sub / ap13sub / ap15sub)
+  return(allAPstacked)
+} #end SubsetAllAP
+
+SubsetAllMLVD <- function(olfrs) {
+  ml8sub <- SubsetBLRH1(m8_Vnorm, olfrs, title = "m8ML", out = "heat") 
+  ml11sub <- SubsetBLRH1(m11_Vnorm, olfrs, title = "m11ML", out = "heat")
+  ml16sub <- SubsetBLRH1(m16_Vnorm, olfrs, title = "m16ML", out = "heat")
+  vd9sub <- SubsetBLRH1(m9_Vnorm, olfrs, title = "m9VD", out = "heat")
+  vd12sub <- SubsetBLRH1(m12_Vnorm, olfrs, title = "m12VD", out = "heat")
+  vd14sub <- SubsetBLRH1(m14_Vnorm, olfrs, title = "m14VD", out = "heat")
+
+  allMLVDstacked <- (ml8sub / ml11sub / ml16sub / vd9sub / vd12sub / vd14sub)
+  return(allMLVDstacked)
+} #end SubsetAllMLDV
 
 #given 2 matrixes, compute spearman correlation of rows (OR vs OR) 
 SpearMatrix <- function(df1, df2) {
@@ -393,27 +422,27 @@ SpearMatrix <- function(df1, df2) {
 #apply SpearMatrix to multiple matrices(just 3 or 4)
 #probably need to rewrite using permutation/combination
 MultiSpearMatrix <- function(...){
-  arguments <- list(...)
-  if (length(arguments) == 3) {
-    mat3 <- matrix(ncol = 3, nrow = nrow(arguments[[1]]))
+  args <- list(...)
+  if (length(args) == 3) {
+    mat3 <- matrix(ncol = 3, nrow = nrow(args[[1]]))
     colnames(mat3) <- c("1v2", "1v3", "2v3")
-    ornames <- rownames(arguments[[1]])
+    ornames <- rownames(args[[1]])
     rownames(mat3) <- ornames
-    mat3[,1] <- SpearMatrix(arguments[[1]], arguments[[2]])
-    mat3[,2] <- SpearMatrix(arguments[[1]], arguments[[3]])
-    mat3[,3] <- SpearMatrix(arguments[[2]], arguments[[3]])
+    mat3[,1] <- SpearMatrix(args[[1]], args[[2]])
+    mat3[,2] <- SpearMatrix(args[[1]], args[[3]])
+    mat3[,3] <- SpearMatrix(args[[2]], args[[3]])
     mat3
-  } else if(length(arguments) == 4) {
-    mat4 <- matrix(ncol = 6, nrow = nrow(arguments[[1]]))
+  } else if(length(args) == 4) {
+    mat4 <- matrix(ncol = 6, nrow = nrow(args[[1]]))
     colnames(mat4) <- c("1v2", "1v3", "1v4", "2v3", "2v4", "3v4")
-    ornames <- rownames(arguments[[1]])
+    ornames <- rownames(args[[1]])
     rownames(mat4) <- ornames
-    mat4[,1] <- SpearMatrix(arguments[[1]], arguments[[2]])
-    mat4[,2] <- SpearMatrix(arguments[[1]], arguments[[3]])
-    mat4[,3] <- SpearMatrix(arguments[[1]], arguments[[4]])
-    mat4[,4] <- SpearMatrix(arguments[[2]], arguments[[3]])
-    mat4[,5] <- SpearMatrix(arguments[[2]], arguments[[4]])
-    mat4[,6] <- SpearMatrix(arguments[[3]], arguments[[4]])
+    mat4[,1] <- SpearMatrix(args[[1]], args[[2]])
+    mat4[,2] <- SpearMatrix(args[[1]], args[[3]])
+    mat4[,3] <- SpearMatrix(args[[1]], args[[4]])
+    mat4[,4] <- SpearMatrix(args[[2]], args[[3]])
+    mat4[,5] <- SpearMatrix(args[[2]], args[[4]])
+    mat4[,6] <- SpearMatrix(args[[3]], args[[4]])
     mat4
   } #endif
 } #end MultiSpearMatrix
@@ -552,7 +581,7 @@ SymLiner <- function(ap, vd, ml, out = "plot") {
       theme(legend.position = "none")
     return(plot)
   } else if (out == "fit") {
-      fit <- coef(lm(peakdifs$vddif ~ peakdifs$apdif))
+      fit <- coef(lm(peakdifs$mldif ~ peakdifs$apdif))
       fitout <- summary(fit)
       return(fit)
   }  else {
@@ -947,44 +976,44 @@ PlotBranches <- function(branches) {
       title_ml <- paste("ML-branch", as.character(i), sep = "")
       title_vd <- paste("VD-branch", as.character(i), sep = "")
       
-      ap_plot <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
+      ap_plot <- SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
                                names, title = title_ap)
-      ml_plot <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, 
+      ml_plot <- SubsetBLRH4(m8_Vnorm, m11_Vnorm, m8_Vnorm, m11_Vnorm,
                                names, title = title_ml)
-      vd_plot <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, 
+      vd_plot <- SubsetBLRH3(m9_Vnorm, m12_Vnorm, m14_Vnorm, 
                                names, title = title_vd)
       branchheatmaps[[i]] <- ap_plot + ml_plot + vd_plot
       
       #branchcor mean includes 1.0 values from ORx vs ORx
       branchcor[i] <- mean(meanpos_cor[which(rownames(meanpos_cor) %in% names),
                                        which(colnames(meanpos_cor) %in% names)])
-      branch3d[[i]] <- ListML(names, "point")
+      #branch3d[[i]] <- ListML(names, "point")
       
       #calculate distance between points for ORs in group
-      data4dist <- ListDorML(names, out = "data") %>% 
-        filter(p50 == clustmaxp)
-      dataMdist <- data4dist %>% 
-        filter(side == "Medial") %>%
-        unique()
-      dataLdist <- data4dist %>%
-        filter(side == "Lateral") %>%
-        unique()
-      permM <- permutations(n=nrow(dataMdist), r=2)
-      permL <- permutations(n=nrow(dataLdist), r=2)
-      someM <- vector("numeric", length = nrow(permM))
-      someL <- vector("numeric", length = nrow(permL))
-      
-      for (m in 1:nrow(permM)) {
-        someM[m] <- Dist3d(dataMdist, permM[m,1], permM[m,2])
-      } #endfor
-      
-      for (l in 1:nrow(permL)) {
-        someL[l] <- Dist3d(dataLdist, permL[l,1], permL[l,2])
-      } #endfor
-      
-      branchMdist[[i]] <- someM
-      branchLdist[[i]] <- someL
-      branchavgdist[i] <- mean(c(someM, someL))
+      # data4dist <- ListDorML(names, out = "data") %>% 
+      #   filter(p50 == clustmaxp)
+      # dataMdist <- data4dist %>% 
+      #   filter(side == "Medial") %>%
+      #   unique()
+      # dataLdist <- data4dist %>%
+      #   filter(side == "Lateral") %>%
+      #   unique()
+      # permM <- permutations(n=nrow(dataMdist), r=2)
+      # permL <- permutations(n=nrow(dataLdist), r=2)
+      # someM <- vector("numeric", length = nrow(permM))
+      # someL <- vector("numeric", length = nrow(permL))
+      # 
+      # for (m in 1:nrow(permM)) {
+      #   someM[m] <- Dist3d(dataMdist, permM[m,1], permM[m,2])
+      # } #endfor
+      # 
+      # for (l in 1:nrow(permL)) {
+      #   someL[l] <- Dist3d(dataLdist, permL[l,1], permL[l,2])
+      # } #endfor
+      # 
+      # branchMdist[[i]] <- someM
+      # branchLdist[[i]] <- someL
+      # branchavgdist[i] <- mean(c(someM, someL))
       
     } else {
       branchcor[i] <- NA
@@ -1004,34 +1033,53 @@ PlotBranches <- function(branches) {
 } #end PlotBranches
 
 SaveHeatmaps <- function(..., path = NA) {
-  arguments <- list(...)
+  args <- list(...)
   argnames <- as.list(match.call())
-  for (i in 1:length(arguments)) {
-    ggsave(plot = arguments[[i]], 
+  for (i in 1:length(args)) {
+    ggsave(plot = args[[i]], 
            filename = paste0(path, "/", argnames[i + 1], ".png"),
            width = 6.41, height = 6.8, units = "in")
     print(paste0("heatmap saved: ", path, "/", argnames[i + 1], ".png"))
-  }
-}
+  } #endfori
+} #end SaveHeatmaps
 
 SaveSquarePlots <- function(..., path = NA) {
-  arguments <- list(...)
+  args <- list(...)
   argnames <- as.list(match.call())
-  for (i in 1:length(arguments)) {
-    ggsave(plot = arguments[[i]], 
+  for (i in 1:length(args)) {
+    ggsave(plot = args[[i]], 
            filename = paste0(path, "/", argnames[i + 1], ".png"),
            width = 6.6, height = 6.6, units = "in")
     print(paste0("plot saved: ", path, "/", argnames[i + 1], ".png"))
-  }
-}
+  } #endfori
+} #end SaveSquarePlots
+```
 
+
+```{r message=F, warning=F}
 #load data
-allmice_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv") %>% select(-X1)
-allmice_covars <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/allmice_covariates_trim_voxweights_v3.csv")
+allmice_tpm <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo2_over_samples_210227.csv")
+
+#make new covars
+blankdata <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/210310_cubegrid_rescaled_outeronly.RDS")
+cntAP <- blankdata %>% group_by(AntPos) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "AntPos") %>% rename("slice" = "AntPos")
+cntML <- blankdata %>% group_by(MedLat) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "MedLat") %>% rename("slice" = "MedLat")
+cntVD <- blankdata %>% group_by(VenDor) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "VenDor") %>% rename("slice" = "VenDor")
+cntall <- bind_rows(cntAP, cntML) %>% bind_rows(cntVD)
+
+allmice_covars <- allmice_tpm %>% left_join(cntall, by = c("dim", "slice")) %>% select(name, rep, slice, dim, dimrep, count, weight)
+
+#visualize weights
+allmice_covars %>% filter(dimrep == 1) %>% ggplot() + geom_line(aes(slice, weight)) + facet_wrap(~dim)
+
 symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline.csv")
 good_3dpoint <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/goodpointORs972_allchemo_listdorML_200820.csv")
 info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/info_201129.csv") %>%
   rename("olfrname" = "gene")
+ompNorms <- c(2.618,1.259,0.864,0.636,0.858,0.585,
+                0.68,1.19,0.961,0.943,0.985,1.093,0.898,
+                1.199,0.829,1.061,0.856,0.984,0.908,0.888,
+                1.054,0.895,0.754)
 
 set.seed(711)
 ```
@@ -1039,8 +1087,7 @@ set.seed(711)
 # mean tpm across all sections
 
 ```{r}
-allmice_no16 <- allmice_tpm %>% filter(rep != 16) %>% arrange(rep)
-allmice_ortaar <- allmice_no16[,1:1135]
+allmice_ortaar <- allmice_tpm[,1:1135]
 
 #calculate average TPM of an OR across all sections
 or_mean_all <- vector(length = ncol(allmice_ortaar), mode = "numeric")
@@ -1128,6 +1175,14 @@ m10_norm <- NormTPM(m10_tpm)
 m13_norm <- NormTPM(m13_tpm)
 m15_norm <- NormTPM(m15_tpm)
 
+#ancient omp norm
+m4_Onorm <- Ompnormify(m4_tpm)
+m6_Onorm <- Ompnormify(m6_tpm)
+m7_Onorm <- Ompnormify(m7_tpm)
+m10_Onorm <- Ompnormify(m10_tpm)
+m13_Onorm <- Ompnormify(m13_tpm)
+m5_Onorm <- Ompnormify(m15_tpm)
+
 #apply voxel factors
 #make sort for voxel adjusted TPM
 ap_voxweights <- allmice_covars %>% filter(rep == 10) %>% select(slice, weight)
@@ -1141,7 +1196,7 @@ m15_Vnorm <- Voxnormify(m15_tpm, ap_voxweights)
 
 #heatmaply_cor(m10_Vnorm, Rowv=T, Colv=F)
 
-m46710_voxsort <- MakeSort4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, method = "posmean")
+m46710_voxsort <- MakeSort(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, method = "posmean")
 
 m4_voxsort <- SortByList(m4_Vnorm, m46710_voxsort)
 m6_voxsort <- SortByList(m6_Vnorm, m46710_voxsort)
@@ -1162,10 +1217,41 @@ ap10 <- MakeBlackRedHeatmap(m10_voxsort)
 ap13 <- MakeBlackRedHeatmap(m13_voxsort)
 ap15 <- MakeBlackRedHeatmap(m15_voxsort)
 
-#examine mergeDF used to make sort
-m46710mergeV <- normNormDF4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm)
-m46710mergeV_voxnormsort <- SortByList(m46710mergeV, m46710_voxsort)
-apmerge <- MakeBlackRedHeatmap(m46710mergeV_voxnormsort)
+#examine merges made with different methods (mean value, median value, median of 4 inputs)
+m46710_medianmerge_use4 <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                                 m10_Vnorm, calc = "median") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Median of 4")
+
+m46710_medianmerge_add0 <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                                 m10_Vnorm, calc = "median", median4 = "add0") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Median of 4 + 0")
+
+#best looking of 4 inputs
+m46710_medianmerge_addmean <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                                 m10_Vnorm, calc = "median", median4 = "addmean") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Median of 4 + mean")
+
+m46710_medianmerge_use4 + m46710_medianmerge_add0 + m46710_medianmerge_addmean
+
+m46710_meanmerge <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                               m10_Vnorm, calc = "mean") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Mean of 4")
+
+m4671013_medianmerge <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                                 m10_Vnorm, m13_Vnorm, calc = "median") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Median of 5, m13")
+
+m4671015_medianmerge <- normNormDF(m4_Vnorm, m6_Vnorm, m7_Vnorm, 
+                                 m10_Vnorm, m15_Vnorm, calc = "median") %>%
+  SortByList(m46710_voxsort) %>% 
+  MakeBlackRedHeatmap()# + ggtitle("Median of 5, m15")
+
+m46710_meanmerge + m4671013_medianmerge + m4671015_medianmerge
 
 apcombohm1 <- ap4 + ap6 + ap7
 apcombohm2 <- ap10 + ap13 + ap15
@@ -1191,7 +1277,6 @@ aptaar <- m46710_voxsort %>%
           axis.title.y = element_blank(),
           legend.position = "none")
 
-apmerge + ggtitle("AP Merge")
 apcombohm1
 apcombohm2
 apother <- aptaar + plot_spacer() + aprtp + aprandom
@@ -1242,7 +1327,7 @@ m14_Vnorm <- Voxnormify(m14_tpm, vd_voxweights)
 #heatmaply_cor(m9_Vnorm, Rowv=T, Colv=F)
 
 #sort and flip to make vd into dv
-m91214_voxsort <- MakeSort3(m9_Vnorm, m12_Vnorm, m14_Vnorm, 
+m91214_voxsort <- MakeSort(m9_Vnorm, m12_Vnorm, m14_Vnorm, 
                             method = "posmean") %>%
   arrange(desc(sortrank)) %>%
   rename(vdrank = sortrank) %>%
@@ -1263,7 +1348,7 @@ dv12 <- MakeBlackRedHeatmap(m12_voxsort)
 dv14 <- MakeBlackRedHeatmap(m14_voxsort)
 
 #examine mergeDF used to make sort
-m91214mergeV <- normNormDF3(m9_Vnorm, m12_Vnorm, m14_Vnorm)
+m91214mergeV <- normNormDF(m9_Vnorm, m12_Vnorm, m14_Vnorm)
 m91214mergeV_voxnormsort <- SortByList(m91214mergeV, m91214_voxsort)
 dvmerge <- MakeBlackRedHeatmap(m91214mergeV_voxnormsort)
 
@@ -1302,17 +1387,13 @@ dvother
 
 ```{r}
 ## ML normalize values
-m8_tpm <- alldim_ml_tpm_cut %>% filter(rep == 8, slice <= 19) %>% select(-name, -rep, -dim, -dimrep) #olfr361 is NA after normalization
-m11_tpm <- alldim_ml_tpm_cut %>% filter(rep == 11, slice <= 19) %>% select(-name, -rep, -dim, -dimrep)
-# m16_tpm <- alldim_ml_tpm_cut %>% filter(rep == 16, slice <= 19) %>% select(-name, -rep, -dim, -dimrep)
+m8_tpm <- alldim_ml_tpm_cut %>% filter(rep == 8) %>% select(-name, -rep, -dim, -dimrep)
+m11_tpm <- alldim_ml_tpm_cut %>% filter(rep == 11) %>% select(-name, -rep, -dim, -dimrep)
+m16_tpm <- alldim_ml_tpm_cut %>% filter(rep == 16) %>% select(-name, -rep, -dim, -dimrep)
 
 m8_norm <- NormTPM(m8_tpm)
 m11_norm <- NormTPM(m11_tpm)
-# m16_norm <- NormTPM(m16_tpm)
-
-# m16_reorder <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11",
-#                  "12", "13", "14", "15", "16", "17", "18", "19")
-# m16_norm <- m16_norm[,m16_reorder]
+m16_norm <- NormTPM(m16_tpm)
 
 #hierarchical clustering of both axes
 #heatmaply(m16_norm)
@@ -1326,35 +1407,35 @@ ml_voxweights <- allmice_covars %>% filter(rep == 8) %>% select(slice, weight)
 
 m8_Vnorm <- Voxnormify(m8_tpm, ml_voxweights)
 m11_Vnorm <- Voxnormify(m11_tpm, ml_voxweights)
-# m16_Vnorm <- Voxnormify(m16_tpm, ml_voxweights) 
+m16_Vnorm <- Voxnormify(m16_tpm, ml_voxweights) 
 
 #heatmaply_cor(m9_Vnorm, Rowv=T, Colv=F)
 
-m811_voxsort <- MakeSort4(m8_Vnorm, m8_Vnorm, m11_Vnorm, m11_Vnorm, method = "posmean")
+m81116_voxsort <- MakeSort(m8_Vnorm, m8_Vnorm, m16_Vnorm, method = "posmean")
 
-m8_voxsort <- SortByList(m8_Vnorm, m811_voxsort)
-m11_voxsort <- SortByList(m11_Vnorm, m811_voxsort)
-#m16_voxsort <- SortByList(m16_Vnorm, m811_voxsort)
+m8_voxsort <- SortByList(m8_Vnorm, m81116_voxsort)
+m11_voxsort <- SortByList(m11_Vnorm, m81116_voxsort)
+m16_voxsort <- SortByList(m16_Vnorm, m81116_voxsort)
 
 #heatmaply_cor(m8_voxsort, Rowv = F, Colv = F)
 
 ml8 <- MakeBlackRedHeatmap(m8_voxsort)
 ml11 <- MakeBlackRedHeatmap(m11_voxsort)
-#ml16 <- MakeBlackRedHeatmap(m16_voxsort)
+ml16 <- MakeBlackRedHeatmap(m16_voxsort)
 
 #examine mergeDF used to make sort
-m811mergeV <- normNormDF4(m8_Vnorm, m8_Vnorm, m11_Vnorm, m11_Vnorm)
-m811mergeV_voxnormsort <- SortByList(m811mergeV, m811_voxsort)
-mlmerge <- MakeBlackRedHeatmap(m811mergeV_voxnormsort)
+m81116mergeV <- normNormDF(m8_Vnorm, m8_Vnorm, m16_Vnorm)
+m81116mergeV_voxnormsort <- SortByList(m81116mergeV, m81116_voxsort)
+mlmerge <- MakeBlackRedHeatmap(m81116mergeV_voxnormsort)
 
-mlcombohm <- ml8 + ml11
+mlcombohm <- ml8 + ml11 + ml16
 
-mlfeats <- PlotFeatures(m811_voxsort, featureOut = "quadbox")
-mlrtp <- PlotFeatures(m811_voxsort, featureOut = "rtp")
-mlrandom <- PlotRandom(m811_voxsort)
+mlfeats <- PlotFeatures(m81116_voxsort, featureOut = "quadbox")
+mlrtp <- PlotFeatures(m81116_voxsort, featureOut = "rtp")
+mlrandom <- PlotRandom(m81116_voxsort)
 
 #Taar positions
-mltaar <- m811_voxsort %>% 
+mltaar <- m81116_voxsort %>% 
   mutate(type = ifelse(str_detect(gene, "Olfr"), "Olfr", "Taar")) %>%
   ggplot(aes(type, wavgs, fill = type)) +
   geom_violin() +
@@ -1377,13 +1458,33 @@ mlother
 # Save plots
 ```{r, eval=F}
 SaveHeatmaps(ap4, ap6, ap7, ap10, ap13, ap15,
-             dv9, dv12, dv14, ml8, ml11,
-             apmerge, dvmerge, mlmerge,
+             dv9, dv12, dv14, ml8, ml11, ml16,
              path = "~/Desktop/obmap/r_analysis/heatmaps/output/below1uni/")
+
+SaveHeatmaps(m46710_meanmerge, m46710_medianmerge, m46710_medianmerge_add0, 
+             m46710_medianmerge_addmean, m46710_medianmerge_use4, 
+             m4671013_medianmerge, m4671015_medianmerge, 
+             dvmerge, mlmerge,
+             path = "~/Desktop/obmap/r_analysis/heatmaps/output/merges/")
 
 SaveSquarePlots(apfeats, apother, dvfeats, dvother, mlfeats, mlother, 
                 path = "~/Desktop/obmap/r_analysis/heatmaps/output/below1uni/")
 ```
+
+
+
+# Do mombaerts ORs that fall out of picture overlap (Mombcomp_picalign.odp) have 2 AP peaks?
+```{r}
+#Olfr15 aka MOR256-17 and Olfr1507 aka MOR28 had medial gloms that did not overlap in 
+mom_ORs <- c("Olfr16", "Olfr17", "Olfr15", "Olfr155", "Olfr160","Olfr1507")
+SubsetAllAP(mom_ORs)
+SubsetAllMLVD(mom_ORs)
+
+mkate_ORs <- c("Olfr1377", "Olfr881")
+SubsetAllAP(mkate_ORs)
+SubsetAllMLVD(mkate_ORs)
+```
+
 
 # matrix similarity tests
 
@@ -1463,12 +1564,12 @@ meanpos_tb <- as_tibble(meanpos_mtx) %>% mutate(gene_id = rownames(meanpos_mtx))
 
 #write_csv(meanpos_tb, "~/Desktop/obmap/r_analysis/heatmaps/output/meanpositions.csv")
 
-heatmaply_cor(meanpos_mtx)
+#heatmaply_cor(meanpos_mtx)
 
 meanpos_cor <- cor(t(meanpos_mtx))
 meanpos_cov <- cov(t(meanpos_mtx))
 
-lancet <- read_csv("~/Downloads/lancet_mouseORnames.csv")
+lancet <- read_csv("~/Desktop/obmap/r_analysis/inputs/lancet_mouseORnames.csv")
 corinfo <- tibble(Olfrname = rownames(meanpos_mtx)) %>%
   left_join(lancet, by = "Olfrname") %>% 
   rename(olfrname = Olfrname) %>%
@@ -1492,98 +1593,812 @@ meanpos_cor_sc <- cbind(meanpos_cor, corinfo$class)
 #if still sucks, plot ORs on umap (avoids another fucking heatmap in my paper) and color by class and fam
 ```
 
-# 10 group covariance
-
+# Are ORs with similar sequence in similar positions?
+## Use pairwise alignments to determine the X most similar ORs to a given OR
 ```{r, eval=F}
-heatmaply_cor(meanpos_cor, k_row = 10, dist_method = "euclidean", hclust_method = "complete")
+library(tidyverse)
+library(seqinr)
+library(Biostrings)
 
-dend <- hclust(dist(meanpos_cor, method = "euclidean"), method = "complete")
-cutree(dend, k = 10)
+data("BLOSUM62")
+mouseor <- read.fasta("~/Downloads/kz_mouseor.fasta", 
+                      as.string = T, set.attributes = F, seqtype = "AA")
+#dotPlot(mouseor[[1]], mouseor[[2]]) #need to import fasta with as.string=F
 
-tree1 <- names(which(cutree(dend, k = 10) == 1))
-tree2 <- names(which(cutree(dend, k = 10) == 2))
-tree3 <- names(which(cutree(dend, k = 10) == 3))
-tree4 <- names(which(cutree(dend, k = 10) == 4))
-tree5 <- names(which(cutree(dend, k = 10) == 5))
-tree6 <- names(which(cutree(dend, k = 10) == 6))
-tree7 <- names(which(cutree(dend, k = 10) == 7))
-tree8 <- names(which(cutree(dend, k = 10) == 8))
-tree9 <- names(which(cutree(dend, k = 10) == 9))
-tree10 <- names(which(cutree(dend, k = 10) == 10))
+orlengths <- vector(mode = "numeric", length = length(mouseor))
+ornames <- vector(mode = "character", length = length(mouseor))
+for (i in 1:length(mouseor)) {
+  orlengths[i] <- nchar(mouseor[[i]])
+  ornames[i] <- names(mouseor)[i]
+}
+mouseordata <- tibble(olfrname = ornames, protlength = orlengths)
+
+test <- pairwiseAlignment(mouseor[[1]], mouseor[[2]], 
+                          substitutionMatrix = "BLOSUM62")
+
+#make a mtrix holding a pairwise alignment score for each pair of OR seqs
+seqsim_score <- matrix(nrow = length(mouseor), ncol = length(mouseor))
+for (i in 1:length(mouseor)) {
+  for (j in i:length(mouseor)) {#submtx and gapscores similar to default blastp
+    seqsim_score[i,j] <- pairwiseAlignment(mouseor[[i]], mouseor[[j]], 
+                                     substitutionMatrix = "BLOSUM62",
+                                     scoreOnly = T,
+                                     gapOpening = 11,
+                                     gapExtension = 1) 
+    seqsim_score[j,i] <- seqsim_score[i,j]
+    } #endif
+  } #endfor
+} #endfor
+colnames(seqsim_score) <- names(mouseor)
+rownames(seqsim_score) <- names(mouseor)
+
+#saveRDS(seqsim_score, "~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_B62.RDS")
+
+#make a matrix for which scores in each column are ranked
+#likely introduces some bias based on seq length since these are raw scores
+seqsim_rank <- matrix(nrow = nrow(seqsim_score), ncol = ncol(seqsim_score))
+for (i in 1:ncol(seqsim_score)) {
+  seqsim_rank[,i] <- rank(dplyr::desc(seqsim_score[,i]), ties.method = "random")
+} #endfor
+colnames(seqsim_rank) <- names(mouseor)
+rownames(seqsim_rank) <- names(mouseor)
+
+#create a matrix where the 1st row holds the olfr name of the 1st ranked score
+seqsim_names <- matrix(nrow = nrow(seqsim_rank), ncol = ncol(seqsim_rank))
+for (i in 1:ncol(seqsim_rank)) {
+  for (j in 1:nrow(seqsim_rank)) {
+    seqsim_names[j,i] <- rownames(seqsim_rank)[which(seqsim_rank[,i] == j)]
+  } #endfor
+} #endfor
+colnames(seqsim_names) <- names(mouseor)
+rownames(seqsim_names) <- 1:nrow(seqsim_names)
+
+#saveRDS(seqsim_names, "~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_ranknames.RDS")
+
+mouse_names <- colnames(allmice_final)[which(str_detect(colnames(allmice_final), "Olfr"))]
+length(mouse_names)
+length(which(mouse_names %in% names(mouseor)))
+
+`%notin%` <- Negate(`%in%`)
+mouse_names[which(mouse_names %notin% names(mouseor))]
+#Olfr779 is a pseudogene and no well annotated protein sequence can be found online
+#could resolve by taking CDS coordinates from gencode release and converting DNA to protein
+
+
+# Do closely related ORs have similar expression patterns?
+seqsim_names <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_ranknames.RDS")
+takethismany <-  25
+numsim <- 6
+rpick <- sample(1:ncol(seqsim_names), size = takethismany)
+
+treetrunk <- vector("list", length = length(rpick))
+nametrunk <- vector("list", length = length(rpick))
+for (i in 1:length(rpick)) {
+  col_olfr <- colnames(seqsim_names)[rpick[i]]
+  names <- c(col_olfr, seqsim_names[1:numsim, rpick[i]])
+  
+  aptree <- SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
+                          names, 
+                          title = paste0("AP-", as.character(col_olfr), 
+                                         "+", as.character(numsim)),
+                          sort = F)
+  mltree <- SubsetBLRH4(m8_Vnorm, m11_Vnorm, m8_Vnorm, m11_Vnorm,
+                          names,
+                          title = paste0("ML-", as.character(col_olfr), 
+                                         "+", as.character(numsim)),
+                          sort = F)
+  vdtree <- SubsetBLRH3(m9_Vnorm, m12_Vnorm, m14_Vnorm,
+                          names,
+                          title = paste0("VD-", as.character(col_olfr),
+                                         "+", as.character(numsim)),
+                          sort = F)
+  treetrunk[[i]] <- aptree + mltree + vdtree
+  nametrunk[[i]] <- SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, names, 
+                                  out = "names", sort = F)
+}
+
+treerandom <- vector("list", length = length(rpick))
+namerandom <- vector("list", length = length(rpick))
+for (i in 1:length(rpick)) {
+  col_olfr <- colnames(seqsim_names)[rpick[i]]
+  random <- sample(1:nrow(seqsim_names), numsim)
+  names <- c(col_olfr, seqsim_names[sample(random, numsim), rpick[i]])
+  
+  aptree <- SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
+                          names, 
+                          title = paste0("AP-", as.character(col_olfr), 
+                                         "+", as.character(numsim), "r"),
+                          sort = F)
+  mltree <- SubsetBLRH4(m8_Vnorm, m11_Vnorm, m8_Vnorm, m11_Vnorm,
+                          names,
+                          title = paste0("ML-", as.character(col_olfr), 
+                                         "+", as.character(numsim), "r"),
+                          sort = F)
+  vdtree <- SubsetBLRH3(m9_Vnorm, m12_Vnorm, m14_Vnorm,
+                          names,
+                          title = paste0("VD-", as.character(col_olfr),
+                                         "+", as.character(numsim), "r"),
+                          sort = F)
+  treerandom[[i]] <- aptree + mltree + vdtree
+  namerandom[[i]] <- SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, names, 
+                                  out = "names", sort = F)
+}
+
+# check more comprehensively
+## For each OR, compute wavg position difference for increasing numbers of similar ORs
+seqsim_names <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_ranknames.RDS")
+
+#determine increment
+divisors <- vector(mode = "numeric")
+obs <- nrow(m46710_voxsort)
+
+for (i in 1:round(obs/2)) {
+  if (obs %% i == 0) {
+    divisors <- c(divisors, i)
+  }
+}
+divisors
+
+increment <- divisors[2]
+
+simdist_colnames <- c("olfrname", "increment", "ap_dist", "ml_dist", "vd_dist", "dist3d", "totdist")
+simdist <- matrix(nrow = (obs/increment)*obs, ncol = length(simdist_colnames))
+for (i in 1:nrow(m46710_voxsort)) {
+  #determine position of reference OR
+  col_olfr <- m46710_voxsort %>% filter(sortrank == i) %>% pull(gene)
+  ap_col <- m46710_voxsort %>% filter(gene == col_olfr) %>% pull(wavgs)
+  ml_col <- m81116_voxsort %>% filter(gene == col_olfr) %>% pull(wavgs)
+  vd_col <- m91214_voxsort %>% filter(gene == col_olfr) %>% pull(wavgs)
+  
+  #determine position of increasingly larger groups of similar ORs
+  for (j in 1:(obs/increment)) {
+    group_olfrs <- seqsim_names[1:(j*increment), which(colnames(seqsim_names) == col_olfr)]
+    ap_group <- m46710_voxsort %>% filter(gene %in% group_olfrs) %>% pull(wavgs) %>% mean(na.rm=T)
+    ml_group <- m81116_voxsort %>% filter(gene %in% group_olfrs) %>% pull(wavgs) %>% mean(na.rm=T)
+    vd_group <- m91214_voxsort %>% filter(gene %in% group_olfrs) %>% pull(wavgs) %>% mean(na.rm=T)
+    
+    ap_dif <- round(abs(ap_group - ap_col), digits = 2)
+    ml_dif <- round(abs(ml_group - ml_col), digits = 2)
+    vd_dif <- round(abs(vd_group - vd_col), digits = 2)
+    
+    dif_3d <- round(sqrt(ap_dif^2 + ml_dif^2 + vd_dif^2), digits = 2)
+    totdist <- ap_dif + ml_dif + vd_dif
+    
+    simdist[(i-1) * (obs/increment) + j,] <- c(col_olfr, j, ap_dif, ml_dif, vd_dif, dif_3d, totdist)
+  } #endforj
+} #endfori
+
+colnames(simdist) <- simdist_colnames
+
+infoclassonly <- info %>% select(olfrname, class)
+
+simdist <- as_tibble(simdist) %>% 
+  left_join(infoclassonly, by = "olfrname")
+
+simdist$increment %<>% as.integer
+simdist$ap_dist %<>% as.numeric
+simdist$ml_dist %<>% as.numeric
+simdist$vd_dist %<>% as.numeric
+simdist$dist3d %<>% as.numeric
+simdist$totdist %<>% as.numeric
+
+#saveRDS(simdist, "~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_wavgdist.RDS")
+
+simdist <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_wavgdist.RDS") %>%
+  filter(!is.na(ap_dist)) %>%
+  filter(!is.na(class))
+
+simdist_sum <- simdist %>% 
+  filter(class == 1) %>% 
+  group_by(increment) %>% 
+  summarise(m_ap = mean(ap_dist, na.rm=T),
+            m_ml = mean(ml_dist, na.rm=T),
+            m_vd = mean(vd_dist, na.rm=T),
+            m_3d = mean(dist3d, na.rm=T))
+
+ggplot(simdist %>% filter(class == 1)) +
+  geom_line(aes(increment, ap_dist, group = olfrname, color = olfrname)) +
+  geom_point(data = simdist_sum, aes(increment, m_ap)) +
+  theme_cowplot() +
+  theme(legend.position = "none") +
+  ggtitle("Class 1 ORs - ap")
+
+simdist %>% filter(increment <= 10 & class == 1) %>% ggplot() + geom_boxplot(aes(increment, ap_dist, group = increment)) + geom_point(data = simdist_sum %>% filter(increment <= 10), aes(increment, m_ap), color = "Red", size = 3)
+
+# ggsave(plot = simdistplot,
+#        "~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_allOR_3d.png",
+#        width = 8,
+#        height = 6)
+
+
+# score based distance calcs
+simscore <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_B62.RDS")
+
+simscore_dist_names <- c("olfr1", "olfr2", "score", "ap_dist", "ml_dist", "vd_dist", "dist_3d", "counter")
+
+simscore_dist <- matrix(nrow = ((nrow(simscore)^2 + nrow(simscore))/2), 
+                        ncol = length(simscore_dist_names))
+print(dim(simscore_dist))
+counter <- 1
+
+#calculate dist for 1/2 of the pairwise score mtx
+for (j in 1:ncol(simscore)) {
+  for (i in j:nrow(simscore)) {
+    #how far along are we?
+    if (j %% 50 == 0 & i == nrow(simscore)) {
+      print(j)
+    }
+    # 
+    # #deal with final row being out of bounds
+    # if (i > nrow(simscore)) {
+    #   print("End")
+    #   break
+    # }
+    
+    if (simscore[i,j] >= 1) {
+      if (i == j) {
+        simscore_dist[counter,] <- c(colnames(simscore)[i], 
+                                     rownames(simscore)[j], 
+                                     simscore[i,j], 0,0,0,0, counter)
+        counter <- counter + 1
+      } else {
+        olfrs <- c(colnames(simscore)[j], rownames(simscore)[i])
+        
+        ap_wavgs <- m46710_voxsort %>%
+          filter(gene %in% olfrs) %>%
+          pull(wavgs)
+        ap_dist <- round(abs(ap_wavgs[1] - ap_wavgs[2]), digits=2)
+        
+        ml_wavgs <- m81116_voxsort %>%
+          filter(gene %in% olfrs) %>%
+          pull(wavgs)
+        ml_dist <- round(abs(ml_wavgs[1] - ml_wavgs[2]), digits=2)
+        
+        vd_wavgs <- m91214_voxsort %>%
+          filter(gene %in% olfrs) %>%
+          pull(wavgs)
+        vd_dist <- round(abs(vd_wavgs[1] - vd_wavgs[2]), digits=2)
+        
+        dist_3d <- round(sqrt(ap_dist^2 + ml_dist^2 + vd_dist^2), digits = 2)
+        
+        vals <- c(olfrs, simscore[i,j], ap_dist, ml_dist, vd_dist, dist_3d, counter)
+        simscore_dist[counter,] <- vals
+        counter <- counter + 1
+      } #endif
+    } #endif
+  } #endfori
+} #endforj
+
+colnames(simscore_dist) <- simscore_dist_names
+
+simscore_dist <- as_tibble(simscore_dist) %>% filter(!is.na(ap_dist))
+
+simscore_dist$score %<>% as.numeric
+simscore_dist$ap_dist %<>% as.numeric
+simscore_dist$ml_dist %<>% as.numeric
+simscore_dist$vd_dist %<>% as.numeric
+simscore_dist$dist_3d %<>% as.numeric
+simscore_dist$counter %<>% as.numeric
+
+infoclassonly <- info %>% select(olfrname, class)
+
+#define classes for both olfrs
+simscore_dist <- simscore_dist  %>%
+  dplyr::rename(olfrname = olfr1) %>%
+  left_join(infoclassonly) %>%
+  dplyr::rename(class1 = class, olfr1 = olfrname, olfrname = olfr2) %>%
+  left_join(infoclassonly) %>%
+  dplyr::rename(class2 = class, olfr2 = olfrname)
+
+#flip olfr1 and olfr2 to make all relationships
+simscore_distflip <- simscore_dist %>% 
+  dplyr::rename(olfr3 = olfr1, olfr1 = olfr2) %>%
+  dplyr::rename(olfr2 = olfr3) %>%
+  select(olfr1, olfr2, everything())
+
+simscore_distall <- bind_rows(simscore_dist, simscore_distflip) %>%
+  select(-counter) %>%
+  arrange(olfr1, desc(score))
+
+#saveRDS(simscore_distall, "~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_scoredist.RDS")
+```
+
+
+```{r}
+info1 <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/info_210127.csv") %>% 
+  rename(olfrname = gene) %>%
+  select(olfrname, oe_region, tz_vd, protlength) %>%
+  rename(olfr1 = olfrname, oe1 = oe_region, tz1 = tz_vd, length1 = protlength)
+
+info2 <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/info_210127.csv") %>% 
+  rename(olfrname = gene) %>%
+  select(olfrname, oe_region, tz_vd, protlength) %>%
+  rename(olfr2 = olfrname, oe2 = oe_region, tz2 = tz_vd, length2 = protlength)
+
+simscore_dist <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/seqsim_scoredist_raw.RDS") %>% 
+  mutate(dupe = ifelse(olfr1 == olfr2, T, F)) %>%
+  group_by(olfr1) %>%
+  mutate(o1_rank = min_rank(desc(score))) %>%
+  distinct() %>%
+  ungroup() %>%
+  left_join(info1, by = "olfr1") %>%
+  left_join(info2, by = "olfr2") %>%
+  mutate(score_length = score/length1,
+         avg_dist = (ap_dist + ml_dist + vd_dist)/3,
+         o1_c1 = ifelse(class1 == 1, T, F),
+         o1_c2 = ifelse(class1 == 2, T, F),
+         o2_c1 = ifelse(class2 == 1, T, F),
+         o2_c2 = ifelse(class2 == 2, T, F))
+
+# Curve for score-percentID
+#https://web.expasy.org/sim/
+#score 1600 is ~100%, same-same
+#score 1500 is ~93%, Olfr1209-Olfr1199
+#score 1350 is ~81%, Olfr791-Olfr769
+#score 1200 is ~71%, Olfr1204-Olfr1259
+#score 1050 is ~62%, Olfr816-Olfr771
+#score 900 is ~57%, Olfr974-Olfr921
+#score 750 is ~48%, Olfr557-Olfr67
+#score 600 is ~41%, Olfr323-Olfr172
+#score 450 is ~37%, Olfr523-Olfr726
+#score 300 is ~28%, Olfr1349-Olfr667
+#score 149 is ~25%, Olfr94-Olfr243
+
+seqident <- tibble(score = c(1600, 1500, 1350, 1200, 1050, 900, 750, 600, 450, 300, 149),
+                   pid = c(100, 93, 81, 71, 62, 57, 48, 41, 37, 28, 25))
+
+ggplot(seqident) + geom_line(aes(score, pid)) + ggtitle("Relationship between Score and %identity")
+
+ggplot(simscore_dist, aes(score, ap_dist)) + geom_point(alpha = 0.1)
+
+Simscore_DVPlot <- function(class = 2, dv = "Dorsal", dim = "AP") {
+  plot_dat <- simscore_dist %>% filter(class1 == class, 
+                           class2 == class, 
+                           oe1 == dv,
+                           oe2 == dv,
+                           dupe == F)
+  
+  title <- paste0(dim, " Class", class, " ", dv)
+  
+  if (str_detect(tolower(dim), "ap")) {
+    ggplot(plot_dat, aes(score, ap_dist)) +
+      geom_point(alpha = 0.1) +
+      geom_smooth(method = "gam") +
+      ggtitle(title)
+  } else if (str_detect(tolower(dim), "ml")) {
+      ggplot(plot_dat, aes(score, ml_dist)) +
+        geom_point(alpha = 0.1) +
+        geom_smooth(method = "gam") +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "dv")) {
+      ggplot(plot_dat, aes(score, vd_dist)) +
+        geom_point(alpha = 0.1) +
+        geom_smooth(method = "gam") +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "3d")) {
+      ggplot(plot_dat, aes(score, dist_3d)) +
+        geom_point(alpha = 0.1) +
+        geom_smooth(method = "gam") +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "avg")) {
+      ggplot(plot_dat, aes(score, avg_dist)) +
+        geom_point(alpha = 0.1) +
+        geom_smooth(method = "gam") +
+        ggtitle(title)
+  } #endif 
+} #end Simscore_DVPlot
+
+Simscore_BinPlot <- function(class = 2, dv = "Dorsal", dim = "AP") {
+  plot_dat <- simscore_dist %>% 
+    filter(class1 == class, 
+           class2 == class, 
+           oe1 == dv,
+           oe2 == dv,
+           dupe == F,) %>%
+    mutate(score_binraw = ifelse(score < 1025, 
+                              "Below60", ifelse(score > 1325, 
+                                                "Above80", "Between60_80")),
+           score_bin = factor(score_binraw, levels = c("Below60", "Between60_80", "Above80")))
+  
+  title <- paste0(dim, " Class", class, " ", dv)
+  
+  if (str_detect(tolower(dim), "ap")) {
+    ggplot(plot_dat, aes(score_bin, ap_dist)) +
+      #geom_violin(aes(fill = score_bin)) +
+      geom_boxplot(aes(fill = score_bin), width = 0.6, outlier.shape = NA) +
+      ggtitle(title) +
+      xlab("Approximate Pairwise OR Protein Sequence Identity") +
+      ylab("AP Distance (100um sections)") +
+      theme_cowplot() +
+      theme(legend.position = "none")
+  } else if (str_detect(tolower(dim), "ml")) {
+      ggplot(plot_dat, aes(score_bin, ml_dist)) +
+      geom_violin(aes(fill = score_bin)) +
+      geom_boxplot(width = 0.1, outlier.shape = NA) +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "dv")) {
+      ggplot(plot_dat, aes(score_bin, vd_dist)) +
+      geom_violin(aes(fill = score_bin)) +
+      geom_boxplot(width = 0.1, outlier.shape = NA) +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "3d")) {
+      ggplot(plot_dat, aes(score_bin, dist_3d)) +
+      geom_violin(aes(fill = score_bin)) +
+      geom_boxplot(width = 0.1, outlier.shape = NA) +
+        ggtitle(title)
+  } else if (str_detect(tolower(dim), "avg")) {
+      ggplot(plot_dat, aes(score_bin, avg_dist)) +
+      geom_violin(aes(fill = score_bin)) +
+      geom_boxplot(width = 0.1, outlier.shape = NA) +
+        ggtitle(title)
+  } #endif 
+} #end Simscore_BinPlot
 
 #AP
-ap1 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree1, "AP-tree1")
-ap2 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree2, "AP-tree2")
-ap3 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree3, "AP-tree3")
-ap4 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree4, "AP-tree4")
-ap5 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree5, "AP-tree5")
-ap6 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree6, "AP-tree6")
-ap7 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree7, "AP-tree7")
-ap8 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree8, "AP-tree8")
-ap9 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree9, "AP-tree9")
-ap10 <- MakeBLRHtree4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, tree10, "AP-tree10")
+#class 1
+simscore_dist %>% filter(class1 == 1, class2 == 1, dupe == F) %>% ggplot(aes(score, ap_dist)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm") + ggtitle("AP - C1 to C1")
 
-#ML
-ml1 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree1, "ML-tree1")
-ml2 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree2, "ML-tree2")
-ml3 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree3, "ML-tree3")
-ml4 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree4, "ML-tree4")
-ml5 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree5, "ML-tree5")
-ml6 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree6, "ML-tree6")
-ml7 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree7, "ML-tree7")
-ml8 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree8, "ML-tree8")
-ml9 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree9, "ML-tree9")
-ml10 <- MakeBLRHtree3(m8_Vnorm, m11_Vnorm, m16_Vnorm, tree10, "ML-tree10")
+#class 2
+simscore_dist %>% filter(class1 == 2 & class2 == 2 & dupe == F) %>% ggplot(aes(score, ap_dist)) + geom_point(alpha = 0.1) + geom_smooth(method = "lm") + ggtitle("AP - C2 to C2")
 
-#VD
-vd1 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree1, "VD-tree1")
-vd2 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree2, "VD-tree2")
-vd3 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree3, "VD-tree3")
-vd4 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree4, "VD-tree4")
-vd5 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree5, "VD-tree5")
-vd6 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree6, "VD-tree6")
-vd7 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree7, "VD-tree7")
-vd8 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree8, "VD-tree8")
-vd9 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree9, "VD-tree9")
-vd10 <- MakeBLRHtree3(m9_Vnorm, m12_Vnorm, m14_Vnorm, tree10, "VD-tree10")
+Simscore_DVPlot(class = 2, dv = "Dorsal", dim = "AP")
+Simscore_DVPlot(class = 2, dv = "Ventral", dim = "AP")
 
-ap1 + ml1 + vd1
-ap2 + ml2 + vd2
-ap3 + ml3 + vd3
-ap4 + ml4 + vd4
-ap5 + ml5 + vd5
-ap6 + ml6 + vd6
-ap7 + ml7 + vd7
-ap8 + ml8 + vd8
-ap9 + ml9 + vd9
-ap10 + ml10 + vd10
+Simscore_BinPlot(class = 2, dv = "Dorsal", dim = "AP")
+Simscore_BinPlot(class = 2, dv = "Ventral", dim = "AP")
 
-length(tree1)
-length(tree2)
-length(tree3)
-length(tree4)
-length(tree5)
-length(tree6)
-length(tree7)
-length(tree8)
-length(tree9)
-length(tree10)
-
-#removing ectopics from the treesets
-#tree7 <- tree7[-which(tree7 == "Olfr287")]
-#tree7 <- tree7[-which(tree7 == "Olfr32")]
-# 
-#ListDorML(tree1, "point")
-# Plot_listML(tree2, "point")
-# Plot_listML(tree3, "point")
-# Plot_listML(tree4, "point")
-# Plot_listML(tree5, "point")
-# Plot_listML(tree6, "point")
-# Plot_listML(tree7, "point")
-# Plot_listML(tree8, "point")
-# Plot_listML(tree9, "point")
-# Plot_listML(tree10, "point")
+# plot_ly(type = "scatter", mode = "markers") %>% 
+#   add_trace(data = simscore_dist %>% filter(class1 == 2 & class2 == 2 & dupe == F),
+#             x = ~score_length, y = ~avg_dist, color = ~o1_c2,
+#             text = ~paste('Gene1: ', olfr1,
+#                           '<br>Gene2: ', olfr2,
+#                           '<br>Class1: ', class1,
+#                           '<br>Class2: ', class2,
+#                           '<br>Score/AA: ', score_length,
+#                           '<br>APdist: ', ap_dist,
+#                           '<br>MLdist: ', ml_dist,
+#                           '<br>DVdist: ', vd_dist),
+#             marker = list(opacity = 0.5))
 ```
+
+
+```{r}
+# what is the average score of class1 ORs to other class1 ORs and to other class2 ORs
+simscore_dist %>% filter(class1 == 1) %>% group_by(class2) %>% summarise(mean_score = mean(score, na.rm=T))
+# class 1 to class 1 = ~750, class 1 to class2/NA = ~350
+
+simscore_dist %>% filter(class1 == 2) %>% group_by(class2) %>% summarise(mean_score = mean(score, na.rm=T))
+# class 2 to class 1 = 350, class 2 to class 2/NA = ~617
+
+na_or1 <- simscore_dist %>% filter(is.na(class1)) %>% select(olfr1) %>% group_by(olfr1) %>% summarise(count = n()) %>% filter(count > 1) %>% pull(olfr1)
+
+#for ORs with no class, can we determine which class they are by looking at score to class1 and class2 ORs?
+for (i in 1:length(na_or1)) {
+  print(simscore_dist %>% 
+    filter(olfr1 == na_or1[i] | olfr2 == na_or1[i]) %>% 
+    group_by(class1, class2) %>% 
+    summarise(mean_score = mean(score, na.rm=T),
+              count = n(),
+              olfr = na_or1[i]))
+}
+
+#Olfr174, Olfr242, Olfr207 have no wavg so no data except exact match
+#Olfr1174 is 336 to C1, 592 to C2 = C2
+#Olfr1274 is 360 to C1, 640 to C2 = C2
+#Olfr1537 is 331 to C1, 625 to C2 = C2
+#Olfr1564 is 346 to C1, 572 to C2 = C2
+#Olfr1565 is 360 to C1, 640 to C2 = C2
+#Olfr175 is 352 to C1, 613 to C2 = C2
+#Olfr237 is 377 to C1, 624 to C2 = C2
+#Olfr322 is 311 to C1, 624 to C2 = C2
+#Olfr329 is 344 to C1, 591 to C2 = C2
+#Olfr391 is 395 to C1, 643 to C2 = C2
+# all the above are named as -ps in info
+```
+
+# redoing basal stuff
+
+```{r}
+# compare new DE to old DE
+old_de <- read_csv("~/Desktop/classify_ap/original_basal_diffe.csv") %>% select(id, logFC, FDR)
+new_de <- read_csv("~/Desktop/classify_ap/new_basal_allcontrols.csv") %>% select(id, logFC, FDR)
+
+both_de <- left_join(old_de, new_de, by = "id", suffix = c("old", "new"))
+
+old_hi <- old_de %>% filter(FDR < 0.1) %>% filter(logFC > 1) %>% arrange(id) %>% pull(id)
+new_hi <- new_de %>% filter(FDR < 0.1) %>% filter(logFC > 1) %>% arrange(id) %>% pull(id)
+
+length(old_hi)
+length(new_hi)
+
+length(which(old_hi %in% new_hi))
+# all old_hi in new_hi
+
+old_lo <- old_de %>% filter(FDR < 0.1) %>% filter(logFC < -2) %>% arrange(id) %>% pull(id)
+new_lo <- new_de %>% filter(FDR < 0.1) %>% filter(logFC < -2) %>% arrange(id) %>% pull(id)
+
+length(old_lo)
+length(new_lo)
+
+length(which(old_lo %in% new_lo))
+# all old_lo in new_lo
+
+both_de_labels <- both_de %>% 
+  mutate(basal_hi = ifelse(id %in% old_hi, "old_hi", ifelse(id %in% new_hi, "new_hi", NA)),
+         basal_lo = ifelse(id %in% old_lo, "old_lo", ifelse(id %in% new_lo, "new_lo", NA)),
+         basal_any = ifelse(!is.na(basal_hi), "any_hi", ifelse(!is.na(basal_lo), "any_lo", NA)))
+
+# how do old and new DE compare?
+ggplot(both_de_labels) +
+  geom_point(aes(logFCold, logFCnew, color = basal_any))
+
+ggplot(both_de_labels) +
+  geom_point(aes(FDRold, FDRnew, color = basal_any))
+#logFCs remain similar but FDRs have diversified
+
+#sortlists
+apkz_vnorm <- MakeSort(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, method = "kzsort") %>%
+  rename(olfrname = gene) %>%
+  select(olfrname, maxsec, avgpos3)
+
+apkz_norm <- MakeSort(m4_norm, m6_norm, m7_norm, m10_norm, method = "kzsort") %>% 
+  rename(olfrname = gene) %>%
+  select(olfrname, maxsec, avgpos3)
+
+apkz_onorm <- MakeSort(m4_Onorm, m6_Onorm, m7_Onorm, m10_Onorm, method = "kzsort") %>%
+  rename(olfrname = gene) %>%
+  select(olfrname, maxsec, avgpos3)
+
+#histograms - where are hi/lo basal ORs located?
+norm_hi <- apkz_norm %>% 
+  filter(olfrname %in% old_hi) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("High Basal in NoNorm")
+
+norm_lo <- apkz_norm %>% 
+  filter(olfrname %in% old_lo) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("Low Basal in NoNorm")
+
+norm_lo + norm_hi
+
+onorm_hi <- apkz_onorm %>% 
+  filter(olfrname %in% old_hi) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("High Basal in OMP Norm")
+
+onorm_lo <- apkz_onorm %>% 
+  filter(olfrname %in% old_lo) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("Low Basal in OMP Norm")
+
+onorm_lo + onorm_hi
+
+vnorm_hi <- apkz_vnorm %>% 
+  filter(olfrname %in% old_hi) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("High Basal in Voxel Norm")
+
+vnorm_lo <- apkz_vnorm %>% 
+  filter(olfrname %in% old_lo) %>% 
+  ggplot() + 
+  geom_histogram(aes(maxsec), bins = 23) + 
+  ggtitle("Low Basal in Voxel Norm")
+
+vnorm_lo + vnorm_hi
+```
+
+
+```{r}
+# look at positions of these ORs
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, old_hi)
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, new_hi)
+
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, old_lo)
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, new_lo)
+
+both_de_info <- both_de %>% 
+  rename(olfrname = id) %>% 
+  left_join(info, by = "olfrname") %>% 
+  left_join(apkz_norm, by = "olfrname") %>%
+  select(-class, -RTP, -known) %>%
+  mutate(fcoldrank = min_rank(logFCold),
+         fcnewrank = min_rank(logFCnew),
+         basal = ifelse(olfrname %in% old_hi, "HighBA", ifelse(olfrname %in% old_lo, "LowBA", NA)))
+
+basal_info <- both_de_info %>% filter(!is.na(basal))
+ggplot(basal_info %>% filter(basal == "HighBA")) + geom_point(aes(fcoldrank, ap_mp)) + ggtitle("High Basal ORs")
+ggplot(basal_info %>% filter(basal == "LowBA")) + geom_point(aes(fcoldrank, ap_mp)) + ggtitle("Low Basal ORs")
+
+ggplot(basal_info) + geom_point(aes(fcoldrank, ap_mp, color = basal)) + ggtitle("Basal ORs")
+ggplot(basal_info) + geom_point(aes(logFCold, ap_mp, color = basal)) + ggtitle("Basal ORs")
+
+ggplot(basal_info) + geom_violin(aes(basal, ap_mp, fill = basal)) + ggtitle("Basal ORs")
+
+#max section like
+ggplot(basal_info %>% filter(basal == "HighBA")) + geom_histogram(aes(maxsec), bins = 23)
+ggplot(basal_info %>% filter(basal == "LowBA")) + geom_histogram(aes(maxsec), bins = 23)
+ggplot(basal_info) + geom_violin(aes(basal, maxsec, fill = basal)) + ggtitle("High Basal ORs")
+
+#how similar is mean position to maxsec?
+ggplot(basal_info, aes(ap_mp, maxsec)) + geom_point() + geom_smooth() + ggtitle("MaxSec vs Mean Position")
+```
+
+
+# examine ORs tested by Sakano for in vitro basal activity
+```{r}
+sak_tib <- tibble(olfrname = c("Olfr1440", "Olfr156", "Olfr155", "Olfr119", 
+                               "Olfr120", "Olfr402", "Olfr1497", "Olfr308", 
+                               "Olfr411", "Olfr523", "Olfr16", "Olfr73", 
+                               "Olfr17", "Olfr536", "Olfr1195", "Olfr170", 
+                               "Olfr1226", "Olfr1507", "Olfr1193", "Olfr1512", 
+                               "Olfr449", "Olfr978", "Olfr725", "Olfr20", 
+                               "Olfr164", "Olfr160", "Olfr727", "Olfr390", 
+                               "Olfr943", "Olfr165", "Olfr15", "Olfr1333"),
+                  group = c(rep("Anterior", times = 10),
+                            rep("Middle", times = 3),
+                            rep("Posterior", times = 19)),
+                  rank = 1:32) 
+sak_tib %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + geom_point(aes(ap_mp, rank, color = group), size = 3) +
+  ggtitle("AP Mean Position")
+
+#info position
+sak_tib %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + 
+  geom_point(aes(ap_mp, rank, color = group), size = 3) +
+  facet_wrap(~ oe_region) +
+  ggtitle("AP Mean Position") +
+  theme(legend.position = "bottom") +
+  ylab("Sakano Basal Activity Rank") + 
+  xlab("AP Mean Position")
+
+#info position as boxplot
+sak_tib %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + 
+  geom_boxplot(aes(group, ap_mp, fill = group)) +
+  facet_wrap(~ oe_region) +
+  ggtitle("AP Mean Position") + 
+  theme_cowplot() + 
+  xlab("Sakano AP Group") + 
+  ylab("AP Mean Position") +
+  theme(legend.position = "none") 
+
+#no norm maxsec
+sak_tib %>% left_join(apkz_norm, by = "olfrname") %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + geom_point(aes(maxsec, rank, color = group), size = 3) +
+  ggtitle("No Norm") +
+  facet_wrap(~ oe_region) +
+  theme(legend.position = "bottom")
+
+#omp norm maxsec
+sak_tib %>% left_join(apkz_onorm, by = "olfrname") %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + geom_point(aes(maxsec, rank, color = group), size = 3) +
+  ggtitle("OMP Norm") +
+  facet_wrap(~ oe_region) +
+  theme(legend.position = "bottom")
+
+#voxel norm maxsec
+sak_tib %>% left_join(apkz_vnorm, by = "olfrname") %>%
+  left_join(info, by = "olfrname") %>%
+  ggplot() + geom_point(aes(maxsec, rank, color = group), size = 3) +
+  ggtitle("Voxel Norm") + 
+  facet_wrap(~ oe_region) +
+  theme(legend.position = "bottom")
+
+sak_ant <- sak_tib %>% filter(group == "Anterior") %>% pull(olfrname)
+sak_mid <- sak_tib %>% filter(group == "Middle") %>% pull(olfrname)
+sak_post <- sak_tib %>% filter(group == "Posterior") %>% pull(olfrname)
+
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, subset = sak_ant, 
+            title = "Sakano Anterior ORs", sort = F)
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, subset = sak_mid, 
+            title = "Sakano Middle ORs", sort = F)
+SubsetBLRH4(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, subset = sak_post, 
+            title = "Sakano Posterior ORs", sort = F)
+```
+
+
+# are heatmap outliers real?
+By real I guess we mean are they present across replicates at similar expression levels
+Could look at Olfr-Position cells by recording values from multiple replicates
+Could binarise (1 is value greater than 0/0.25/0.5) and heatmap presence across replicates
+This lead to using median values for AP heatmaps
+```{r}
+# binarise matrix cells above value
+Above_value <- function(df_in, value) {
+  #setting high values to 1 prior to setting low values to 0 can result in an all 0 matrix if the value is greater than 1
+  df_above <- df_in
+  df_above[df_above < value] <- 0
+  df_above[df_above >= value] <- 1
+  return(df_above)
+}
+
+
+# Heatmap based on replicate consistency for values 
+HeatConsist <- function(..., expression_val, repconsist_val = NA, sort, out = "heatmap") {
+  args <- list(...)
+  if (length(args) == 3) {
+    df1_above <- Above_value(args[[1]], value = expression_val)
+    df2_above <- Above_value(args[[2]], value = expression_val)
+    df3_above <- Above_value(args[[3]], value = expression_val)
+    
+    df_merge <- matrix(nrow = nrow(df1_above), ncol = ncol(df1_above))
+    
+    for (i in 1:ncol(df_merge)) {
+      df_merge[,i] <- df1_above[,i] + df2_above[,i] + df3_above[,i]
+    } #endfor
+  } else if (length(args) == 4) {
+    df1_above <- Above_value(args[[1]], value = expression_val)
+    df2_above <- Above_value(args[[2]], value = expression_val)
+    df3_above <- Above_value(args[[3]], value = expression_val)
+    df4_above <- Above_value(args[[4]], value = expression_val)
+    
+    df_merge <- matrix(nrow = nrow(df1_above), ncol = ncol(df1_above))
+    
+    for (i in 1:ncol(df_merge)) {
+      df_merge[,i] <- df1_above[,i] + df2_above[,i] + df3_above[,i] + df4_above[,i]
+    } #endfor
+  } #endif
+  
+  #select repconsist
+  if (is.na(repconsist_val)) {
+    #dont care about consistency between replicates, so normalize
+    consist_norm <- matrix(nrow = nrow(df_merge), ncol = ncol(df_merge))
+    for (i in 1:nrow(df_merge)) {
+      consist_norm[i,] <- NormalizeMaxMin(df_merge[i,])
+    } #endfor
+    hmtitle <- paste0("Consistency of expression above ", expression_val)
+  } else {
+    consist_norm <- Above_value(df_merge, value = repconsist_val)
+    hmtitle <- paste0("Expression above ", expression_val, 
+                      " in ", repconsist_val, "+ replicates")
+  }
+  
+  #name rows and columns
+  colnames(consist_norm) <- colnames(args[[1]])
+  rownames(consist_norm) <- rownames(args[[1]])
+  if (out == "df") {
+    return(consist_norm)
+  } else if (out == "heatmap") {
+    hm_sort <- SortByList(consist_norm, sort)
+    hm <- MakeBlackRedHeatmap(hm_sort, title = hmtitle)
+    return(hm)
+  } #endif
+} #end HeatConsist
+
+gra <- HeatConsist(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm, 
+            expression_val = 0.1, repconsist_val = 4, sort = m46710_voxsort, out = "heatmap")
+gra
+
+consist_list <- vector("list", length = 12)
+repvals <- c(1, 2, 3, 4)
+expvals <- c(0.25, 0.5, 0.75)
+counter <- 1
+for (i in 1:length(repvals)) {
+  for (j in 1:length(expvals)) {
+    consist_list[[counter]] <- HeatConsist(m4_Vnorm, m6_Vnorm, m7_Vnorm, m10_Vnorm,
+                                         expression_val = expvals[j], 
+                                         repconsist_val = repvals[i],
+                                         sort = m46710_voxsort,
+                                         out = "heatmap")
+    counter <- counter + 1
+  }
+}
+
+consist_list[[1]]
+```
+
 
 # examine covariance
 
@@ -1674,6 +2489,7 @@ for (k in 1:ncol(dd_bin)) {
   } #endif
 } #endfork
 ```
+
 
 ## Compare Ant and Post Peak Positions across mice
 
@@ -1802,38 +2618,45 @@ Should be slanted across the OB moving more laterally as it moves more posterior
 #lets try a single replicate
 dr1 <- SymLiner(m10_Vnorm, m9_Vnorm, m8_Vnorm)
 dr2 <- SymLiner(m13_Vnorm, m12_Vnorm, m11_Vnorm)
-#dr3 <- SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm) #ml for m16 is flipped so actually lm
+dr3 <- SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm)
 
 fit1 <- SymLiner(m10_Vnorm, m9_Vnorm, m8_Vnorm, out = "fit")
 fit2 <- SymLiner(m13_Vnorm, m12_Vnorm, m11_Vnorm, out = "fit")
-#fit3 <- SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm, out = "fit")
+fit3 <- SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm, out = "fit")
+
+intercepts <- c(fit1[[1]], fit2[[1]], fit3[[1]])
+slopes <- c(fit1[[2]], fit2[[2]], fit3[[2]])
+mean(intercepts)
+mean(slopes)
 
 SymLiner(m10_Vnorm, m9_Vnorm, m8_Vnorm, out = "plot")
 SymLiner(m13_Vnorm, m12_Vnorm, m11_Vnorm, out = "plot")
-#SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm, out = "plot")
+SymLiner(m15_Vnorm, m14_Vnorm, m16_Vnorm, out = "plot")
 
-ggplot() +
+symlineplot <- ggplot() +
   geom_blank() +
-  geom_abline(aes(slope = 0.32655, intercept = 7.61119, color = "rep1"), size = 2) +
-  geom_abline(aes(slope = 0.24922, intercept = 8.83890, color = "rep2"), size = 2) +
+  geom_abline(aes(slope = slopes[1], intercept = intercepts[1], color = "rep1"), size = 2) +
+  geom_abline(aes(slope = slopes[2], intercept = intercepts[2], color = "rep2"), size = 2) +
+  geom_abline(aes(slope = slopes[3], intercept = intercepts[3], color = "rep3"), size = 2) +
   xlim(0,23) +
   ylim(0,22) + 
-  ggtitle("Glomeruli symmetry line as calculated by single dimension heatmap peaks") +
+  ggtitle("OB Symmetry from AP+ML heatmap peaks") +
   xlab("Mean position of top 2 AP peaks") +
   ylab("Mean position of top 2 ML peaks") +
-  theme_cowplot() +
-  xlab("Anterior-Posterior Peak Intersections") +
-  ylab("Medial-Lateral Peak Intersections")
+  theme_cowplot()
+
+symlineplot
+#SaveSquarePlots(symlineplot, path = "~/Desktop/obmap/r_analysis/heatmaps/output/")
 
 apvals <- c(1:28)
 mlvals <- vector(length = length(apvals), mode = "numeric")
 for (i in 1:length(apvals)) {
-  mlvals[i] <- round(8.225045 + 0.287885 * apvals[i], digits = 2)
+  mlvals[i] <- round(mean(intercepts) + mean(slopes) * apvals[i], digits = 2)
 }
 
 #output symline positions for voxels
 symline <- tibble(apvals, mlvals)
-write_csv(symline, "~/Desktop/obmap/r_analysis/heatmaps/output/symline.csv")
+#write_csv(symline, "~/Desktop/obmap/r_analysis/heatmaps/output/symline_3rep.csv")
 
 #for dr1: m10 and m8, goes from 8.83 to 14.3 while AP moves 1->23 (slope = 0.24922)
 #for dr2: m11 and m13, ML symmetry line goes from 7.61 to 14.8 while AP moves 1->23 (slope = 0.32655)
@@ -1938,7 +2761,7 @@ heatmap_peaks <- bind_rows(lateral_join, medial_join) %>%
 ```{r}
 ap_vox <- m46710_voxsort %>% rename(AntPos = sortrank) %>% rename(ap_mp = wavgs, ap_rank = AntPos)
 vd_vox <- m91214_voxsort %>% rename(VenDor = sortrank) %>% rename(vd_mp = wavgs, vd_rank = VenDor)
-ml_vox <- m811_voxsort %>% rename(MedLat = sortrank) %>% rename(ml_mp = wavgs, ml_rank = MedLat)
+ml_vox <- m81116_voxsort %>% rename(MedLat = sortrank) %>% rename(ml_mp = wavgs, ml_rank = MedLat)
 ranklist <- left_join(ap_vox, vd_vox, by = "gene")
 ranklist2 <- left_join(ranklist, ml_vox, by = "gene")
 #write_csv(ranklist2, "~/Desktop/obmap/r_analysis/heatmaps/output/dim_ranklist_201129.csv")
@@ -2054,7 +2877,7 @@ uni_heatmaps_ap4 <- UniformityFilter(m4_Vnorm, ranklist = m46710_voxsort)
 
 uni_heatmaps_dv9 <- UniformityFilter(m9_Vnorm, ranklist = m91214_voxsort)
 
-uni_heatmaps_ml8 <- UniformityFilter(m8_Vnorm, ranklist = m811_voxsort)
+uni_heatmaps_ml8 <- UniformityFilter(m8_Vnorm, ranklist = m81116_voxsort)
 
 uni_heatmaps_ap4
 uni_heatmaps_dv9
@@ -2141,8 +2964,6 @@ length(which(ml_uniORs %in% apdv_uniORs))
 #8 of 22 ml uni ORs are in the 22 apdv uni ORs
 alldim_overlap_uniORs <- ml_uniORs[which(ml_uniORs %in% apdv_uniORs)]
 ```
-
-### Legacy
 
 # Load 3D model parameters and data
 
@@ -2784,8 +3605,7 @@ ranked <- tidy_result %>%
   ungroup() %>% group_by(voxel) %>% 
   mutate(voxRankSNR = rank(desc(voxSNRdim))) %>% 
   ungroup() %>% 
-  select(p2.5, p50, p97.5, AntPos:ORrankpervox, geneRankSNR, 
-         voxRankSNR, AP_Avgp50:voxSNRdim, voxel)
+  select(p50, AntPos:ORrankpervox, geneRankSNR, voxRankSNR, AP_Avgp50:voxSNRdim, voxel)
 ```
 
 # Split into n groups
@@ -2810,3 +3630,6 @@ bestdist400 <- which(branch400$avg_dist == min(branch400$avg_dist, na.rm=T))
 branch400$`3D`[107]
 #find something to define the branch with the highest ranked cor that is also the highest ranked 3d
 ```
+
+
+

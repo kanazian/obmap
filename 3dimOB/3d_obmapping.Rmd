@@ -14,13 +14,16 @@ Input TPM data is gencode v25 aligned, RSEM quantified and merged using make_obm
 ## Plan:
 Use best 2 replicates (1 and 2) to generate the statistical model with 200 iterations (more iter will require running on server or adding more swap space).  Model involves ILR transform of dirichlet sampled TPM data which is then used to calculate Bayesian posterior probabilities for each OR in each voxel. p50 quantile value will be used to calculate most likely positions for each OR. To avoid picking a point that is an intersection of high expression sections in each dimension, a clustering function is used to determine high expression areas. A dorsal-ventral constraint function based on prior knowledge of an ORs position in the olfactory epithelium is combined with predicted OB positions in order to ensure 2 matching DV predictions if at least one predicted position matches with olfactory epithelium position.  
 
+# consider new way to define best OR for voxel, using outlier detection for each voxel and then clustering for the ORs that are outliers
+
 # Packages and functions
 ```{r setup, message=F}
-knitr::opts_chunk$set(warning=F)
+#knitr::opts_chunk$set(warning=F)
+
 library(MCMCpack)
 library(plotly) 
 library(tidyverse)
-library(driver) ## devtools::install_github("jsilve24/driver")
+library(driver) # devtools::install_github("jsilve24/driver")
 library(Rcpp)
 library(ggsci)
 library(cowplot)
@@ -28,13 +31,13 @@ library(cowplot)
 
 # functions -----------------------------------------------------------
 # model prep
-Sample_data <- function(Y, alpha, iter=1){
+SampleData <- function(Y, alpha, iter=1){
   d <- array(0, dim=c(N, D, iter))
   for (i in 1:nrow(Y)){
     d[i,,] <- t(rdirichlet(iter, Y[i,] + alpha[i,]))
-  } 
+  } #endfor
   return(d)
-}
+} #end SampleData
 
 # calculate quantiles
 sourceCpp("~/Desktop/obmap/r_analysis/3dimOB/input/kzcolQuant.cpp")
@@ -45,7 +48,7 @@ Dist3d <- function(df, row1, row2) {
                   (df$MedLat[row1] - df$MedLat[row2])^2 + 
                   (df$VenDor[row1] - df$VenDor[row2])^2)
   return(thing)
-}
+} #end Dist3d
 
 # 3d interactive scatterplot
 Scat3d <- function(df, ml, ap, vd, color="voxrankperOR") {
@@ -65,10 +68,10 @@ Scat3d <- function(df, ml, ap, vd, color="voxrankperOR") {
     layout(scene = list(xaxis = list(title = 'Medial-Lateral'),
                         yaxis = list(title = 'Anterior-Posterior'),
                         zaxis = list(title = 'Ventral-Dorsal')))
-}
+} #end Scat3d
 
 #given an OR, pick a number of high probability voxels based on signal to noise ratios
-Scat_rank <- function(olfr, topX = 72, chooseOut = "plot", title = NA) {
+Scat_rank <- function(olfr, topX = 72, out = "plot", title = NA) {
   reranked <- ranked %>% 
     filter(olfrname == olfr) %>% 
     mutate(rankofrank = min_rank(voxRankSNR),
@@ -79,7 +82,7 @@ Scat_rank <- function(olfr, topX = 72, chooseOut = "plot", title = NA) {
   worsties <- reranked %>% filter(isRanked == 1)
   all <- bind_rows(besties, worsties)
   
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(all)
   } else {
     p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
@@ -88,7 +91,7 @@ Scat_rank <- function(olfr, topX = 72, chooseOut = "plot", title = NA) {
                 text = ~paste('Gene:', olfrname, 
                               '<br>voxRankSNR:', voxRankSNR, 
                               '<br>voxSNRdim', voxSNRdim),
-                marker = list(size = 6)) %>%
+                marker = list(size = 5, color = "grey")) %>%
       add_trace(data=besties, x=~AntPos, y=~MedLat, z=~VenDor, color=~rankcol,
                 text = ~paste('Gene:', olfrname, 
                               '<br>voxRankSNR:', voxRankSNR, 
@@ -100,7 +103,7 @@ Scat_rank <- function(olfr, topX = 72, chooseOut = "plot", title = NA) {
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
+} #end Scat_rank
 
 #plot p50 values for an olfrs top X voxels
 p50plot <- function(olfr, rankx = 50, title = NA) {
@@ -116,7 +119,7 @@ p50plot <- function(olfr, rankx = 50, title = NA) {
               text = ~paste('Gene:', olfr, 
                             '<br>voxRankSNR:', voxRankSNR, 
                             '<br>voxSNRdim', voxSNRdim),
-              marker = list(size = 6)) %>%
+              marker = list(size = 5, color = "grey")) %>%
     add_trace(data=bestp50, x=~AntPos, y=~MedLat, z=~VenDor, color=~rankp,
               text = ~paste('Gene:', olfr, 
                             '<br>voxRankSNR:', voxRankSNR, 
@@ -126,12 +129,12 @@ p50plot <- function(olfr, rankx = 50, title = NA) {
            scene = list(xaxis = list(title = 'Anterior-Posterior'),
                         yaxis = list(title = 'Medial-Lateral'),
                         zaxis = list(title = 'Ventral-Dorsal')))
-} #endfunction
+} #end p50plot
 
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
 #why the hell am i ranking just to rerank with desc???
-Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", title = NA) {
+Cluster <- function (olfr, topX = 72, minClustSize = 5, out = "plot", title = NA) {
   df <- ranked %>% 
     filter(olfrname == olfr) %>% 
     mutate(rankofrank = min_rank(desc(min_rank(p50)))) %>% 
@@ -144,7 +147,7 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
     filter(rankofrank > topX) %>% 
     arrange(desc(p50))
   
-  #make pairwise of matrixes
+  #make pairwise matrixes
   dmatrix <- matrix(data = 0, nrow = nrow(df), ncol = nrow(df))
   for (i in 1:nrow(df)) {
     distances <- vector("numeric", length = nrow(df))
@@ -226,7 +229,7 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
   all_out <- bind_rows(df_clustered, cut_out) %>% unique()
   
   #return various things 'rgb(10,10,10)'
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(all_out)
   } else {
     p <-  plot_ly(type = "scatter3d", mode = "markers") %>% 
@@ -237,7 +240,7 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
+                marker = list(size = 5, color = "grey")) %>%
       add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
@@ -251,25 +254,29 @@ Cluster <- function (olfr, topX = 72, minClustSize = 5, chooseOut = "plot", titl
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
+} #end Cluster
 
 #run cluster given an incrementing number of voxels to cluster from
 #needs to also output some sort of summary statistic to define the optimal number of initial voxels that returns the "best" clusters 
 BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
-                   clustersPerHalfBulb = 1, chooseOut = "plot", title = NA) {
+                   clustersPerHalfBulb = 1, out = "plot", title = NA) {
   cphb <- 0
   topStep <- topMin
   while (cphb < clustersPerHalfBulb) {
-    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, chooseOut = "data")
+    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, out = "data")
     df_ml <- df_in %>% 
       filter(isCluster == 1) %>% 
       group_by(clust_unique) %>% 
       mutate(meanML = mean(MedLat),
              meanAP = mean(AntPos),
              meanVD = mean(VenDor),
+             clustrank = min_rank(desc(p50))) %>% 
+      ungroup() %>%
+      rowwise() %>%
+      mutate(fadenotbest = ifelse(clustrank == 1, 1, 0),
              side = ifelse(meanML >= symline$mlvals[which(symline$apvals == round(meanAP))],
                            "Lateral", "Medial")) %>% 
-      ungroup()
+      ungroup() 
     
     df_bestM <- df_ml %>% 
       filter(side == "Medial") %>%
@@ -306,11 +313,11 @@ BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
   df_all <- bind_rows(df_best, df_notbest)
   
   #output
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(df_all)
-  } else if (chooseOut == "best") {
+  } else if (out == "best") {
     return(df_best)
-  } else if (chooseOut == "notbest") {
+  } else if (out == "notbest") {
     return(df_notbest)
   } else {
     p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
@@ -321,42 +328,52 @@ BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
-      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 1), x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="Best Probability",
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, color = "red", line = list(color = 'black', width = 0.5))) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 0), x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="High Probability", opacity = 0.4,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_mean_ML:', meanML,
+                              '<br>C_max_p50:', clustmaxp,
+                              '<br>Cluster:', clust_unique,
+                              '<br>SideRank:', sideRank),
+                marker = list(size = 6, color = "orange", line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
+} #end BestML
 
 #given a list of Olfr names, output 1 medial and 1 lateral cluster for each name
 #perhaps add an if or arg for really big lists to run a reduced step
-ListML <- function(x, chooseOut = "plot", title = NA) {
+ListML <- function(x, out = "plot", title = NA) {
   #use a list to build a df of unknown size instead of bind_row each iteration
   list_out <- vector("list", length = length(x))
   for (i in 1:length(x)) {
     list_out[[i]] <- BestML(x[i], topMin = 50, topMax = 150, topBy = 50, 
-                            minSize = 2, clustersPerHalfBulb = 1, chooseOut = "best")
+                            minSize = 2, clustersPerHalfBulb = 1, out = "best")
   } #endfor
   
   #always need notbest for the shape shell1
   notbest <- BestML(x[1], topMin = 100, topMax = 150, topBy = 50, minSize = 2, 
-                    clustersPerHalfBulb = 1, chooseOut = "notbest")
+                    clustersPerHalfBulb = 1, out = "notbest")
   df_out <- bind_rows(list_out)
   
   #output
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(df_out)
-  } else if (chooseOut == "point") {
+  } else if (out == "point") {
     df_point <- df_out %>% filter(p50 == clustmaxp)
     p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
       add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
@@ -389,7 +406,7 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
+                marker = list(size = 5, color = "grey")) %>%
       add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
@@ -404,32 +421,34 @@ ListML <- function(x, chooseOut = "plot", title = NA) {
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
+} #end ListML
 
 #run Cluster and check if either top ranked M or L glom is dorsal and has known dorsal expression or is class 1. If True, find a dorsal glom for both M and L
 DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
-                     clustIn = 5, clustOut = 1, chooseOut = "plot",
+                     clustIn = 5, clustOut = 1, out = "plot",
                      title = NA) {
   print(olfr)
   clustFound <- 0
   topStep <- topMin
   while (clustFound != clustOut) {
-    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, chooseOut = "data")
+    df_in <- Cluster(olfr, topX = topStep, minClustSize = minSize, out = "data")
     df_ml <- df_in %>% 
       filter(isCluster == 1) %>% 
       group_by(clust_unique) %>% 
       mutate(meanML = mean(MedLat),
              meanAP = mean(AntPos),
-             meanVD = mean(VenDor)) %>%
+             meanVD = mean(VenDor),
+             clustrank = min_rank(desc(p50))) %>%
       ungroup() %>%
       rowwise() %>%
-      mutate(side = ifelse(meanML >= symline$mlvals[which(symline$apvals == round(meanAP))],
+      mutate(fadenotbest = ifelse(clustrank == 1, 1, 0),
+             side = ifelse(meanML >= symline$mlvals[which(symline$apvals == round(meanAP))],
                            "Lateral", "Medial")) %>% 
       ungroup() %>%
       left_join(info, by = "olfrname") %>%
       rowwise() %>% 
       mutate(dorsalRating = sum(ifelse(class == 1, 2, 0), 
-                                ifelse(tzsimple < 2, 1, 0),
+                                ifelse(tz_val < 2, 1, 0),
                                 ifelse(oe_region == "Dorsal", 1, 0),
                                 ifelse(str_detect(olfrname, "Olfr"), 0, 2),
                                 na.rm = T)) %>%
@@ -550,54 +569,59 @@ DorsalML <- function(olfr, topMin = 100, topBy = 100, minSize = 2,
   df_all <- bind_rows(df_best, df_notbest) %>% unique()
   
   #output
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(df_all)
-  } else if (chooseOut == "best") {
+  } else if (out == "best") {
     return(df_best)
-  } else if (chooseOut == "notbest") {
+  } else if (out == "notbest") {
     return(df_notbest)
   } else {
     p <- plot_ly(type = "scatter3d", mode = "markers") %>%
-      add_trace(data=df_notbest, x=~AntPos, y=~MedLat, z=~VenDor,
+      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor,
                 color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname,
-                              '<br>C_size_rank:', clustsizerank,
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
-      add_trace(data=df_best, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 1), x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="Best Probability",
                 text = ~paste('Gene:', olfrname,
                               '<br>C_size_rank:', clustsizerank,
                               '<br>C_mean_ML:', meanML,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique,
                               '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+                marker = list(size = 6, color = "red", line = list(color = 'black', width = 0.5))) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 0), x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="High Probability",  opacity=0.6,
+                text = ~paste('Gene:', olfrname,
+                              '<br>C_size_rank:', clustsizerank,
+                              '<br>C_mean_ML:', meanML,
+                              '<br>C_max_p50:', clustmaxp,
+                              '<br>Cluster:', clust_unique,
+                              '<br>SideRank:', sideRank),
+                marker = list(size = 6, color = "orange", line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
              scene = list(xaxis = list(title = 'Anterior-Posterior'),
                           yaxis = list(title = 'Medial-Lateral'),
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
+} #end DorsalML
 
 #given a list of Olfr names, output 1 medial and 1 lateral cluster for each name
-ListDorML <- function(x, chooseOut = "plot", title = NA) {
+ListDorML <- function(x, by, out = "plot", title = NA) {
   #use a list to build a df of unknown size instead of bind_row each iteration
   list_out <- vector("list", length = length(x))
   for (i in 1:length(x)) {
-    list_out[[i]] <- DorsalML(x[i], topBy = 200, chooseOut = "best")
-  } #endfor
+    list_out[[i]] <- DorsalML(x[i], topBy = by, out = "best")
+  } #endfori
   
   #always need notbest for the shape shell1
-  notbest <- DorsalML(x[1], chooseOut = "notbest")
+  notbest <- DorsalML(x[1], out = "notbest")
   df_out <- bind_rows(list_out)
   
   #output
-  if (chooseOut == "data") {
+  if (out == "data") {
     return(df_out)
-  } else if (chooseOut == "point") {
+  } else if (out == "point") {
     df_point <- df_out %>% filter(p50 == clustmaxp)
     p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
       add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
@@ -607,7 +631,7 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
+                marker = list(size = 5, color = "grey")) %>%
       add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
@@ -630,7 +654,7 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
                               '<br>C_mean_p50:', clustmeanp,
                               '<br>C_max_p50:', clustmaxp,
                               '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
+                marker = list(size = 5, color = "grey")) %>%
       add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
@@ -645,194 +669,115 @@ ListDorML <- function(x, chooseOut = "plot", title = NA) {
                           zaxis = list(title = 'Ventral-Dorsal')))
     return(p)
   } #endif
-} #endfunction
-
-#using heatmap peak data, create a 3d raw point or find nearest blank OB shell point to that raw point, options to use tan zone to assign a VD position or use average of VD peaks
-Heat3D <- function(olfr, dimrep = 1, dv = "oe", raw = F, chooseOut = "plot") {
-  df_in <- heatmap_peaks %>% filter(olfrname %in% olfr) %>% arrange(side)
-  
-  if (nrow(df_in) == 0) {
-    print(paste("No", olfr, "Found"))
-    next
-  } #endif
-  
-  if (dv == "oe") {
-    df_dv <- df_in %>%
-      mutate(VD_selected = VDtz,
-             VD_value = "Tan Based")
-  } else {
-    df_dv <- df_in %>%
-      mutate(VD_selected = VDavg,
-             VD_value = "Avg Based")
-  } #endif
-  
-  if (dimrep == 1) {
-    df_out <- df_dv %>% 
-      select(olfrname, AntPos10, APval10, MedLat8, MLval8, VD_selected, VD_value, side) %>%
-      rename(AP_selected = AntPos10, AP_value = APval10,
-             ML_selected = MedLat8, ML_value = MLval8)
-  } else if (dimrep == 2) {
-    df_out <- df_dv %>% 
-      select(olfrname, AntPos13, APval13, MedLat11, MLval11, VD_selected, VD_value, side) %>%
-      rename(AP_selected = AntPos13, AP_value = APval13,
-             ML_selected = MedLat11, ML_value = MLval11)
-  } else if (dimrep == 3) {
-    df_out <- df_dv %>% 
-      select(olfrname, AntPos15, APval15, MedLat16, MLval16, VD_selected, VD_value, side) %>%
-      rename(AP_selected = AntPos15, AP_value = APval15,
-             ML_selected = MedLat16, ML_value = MLval16)
-  } else if (dimrep == "123") {
-    df_out <- df_dv %>% rowwise() %>%
-      mutate(AP_selected = mean(c(AntPos10, AntPos13, AntPos15)),
-             AP_value = mean(c(APval10, APval13, APval15)),
-             ML_selected = mean(c(MedLat8, MedLat11, MedLat16)),
-             ML_value = mean(c(MLval8, MLval11, MLval16))) %>%
-      ungroup()
-  } else if (dimrep == "12") {
-    df_out <- df_dv %>% rowwise() %>%
-      mutate(AP_selected = mean(c(AntPos10, AntPos13)),
-             AP_value = mean(c(APval10, APval13)),
-             ML_selected = mean(c(MedLat8, MedLat11)),
-             ML_value = mean(c(MLval8, MLval11))) %>%
-      ungroup()
-  } #endif
-  
-  if (raw == T) {
-    if (chooseOut == "plot") {
-      plot <- plot_ly(type = "scatter3d", mode = "markers") %>%
-        add_trace(data = blankdata,
-                  x = ~AntPos, y=~MedLat, z=~VenDor,
-                  color="shell", opacity=0.15,
-                  text = ~paste('AntPos:', AntPos,
-                                '<br>MedLat:', MedLat,
-                                '<br>VenDor:', VenDor),
-                  marker = list(size = 6)) %>%
-        add_trace(data = df_out, 
-                  x = ~AP_selected, 
-                  y = ~ML_selected, 
-                  z = ~VD_selected, 
-                  color = ~olfrname,
-                  text = ~paste('Gene:', olfrname, 
-                                '<br>AntPos:', AP_selected,
-                                '<br>APvalue', AP_value,
-                                '<br>MedLat:', ML_selected,
-                                '<br>MLvalue:', ML_value,
-                                '<br>VenDor:', VD_selected,
-                                '<br>VDvalue:', VD_value,
-                                '<br>Side:', side,
-                                '<br>Point:', "Raw"),
-                  marker = list(size = 6, 
-                                line = list(color='black', width = 0.5))) %>%
-        layout(scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                            yaxis = list(title = 'Medial-Lateral'),
-                            zaxis = list(title = 'Ventral-Dorsal')))
-      return(plot)
-    } else if (chooseOut == "data") {
-      return(df_out)
-    }
-  } else if (raw == F) { 
-    df_close <- tibble("AntPos" = numeric(), "MedLat" = numeric(), "VenDor" = numeric())
-    for (i in 1:nrow(df_out)) {
-      distances <- vector(mode = "numeric", length = nrow(blankdata))
-      sidevec <- c("Lateral", "Medial")
-      for (j in 1:nrow(blankdata)) {
-        distances[j] <- sqrt((df_out$AP_selected[i] - blankdata$AntPos[j])^2 +
-                               (df_out$ML_selected[i] - blankdata$MedLat[j])^2 + 
-                               (df_out$VD_selected[i] - blankdata$VenDor[j])^2)
-        df_close[i,] <- blankdata[which(rank(distances, ties.method = "first") == 1),]
-      }
-    }
-    
-    df_close_out <- df_close %>% 
-      mutate(side = sidevec) %>%
-      left_join(df_out, by = "side") %>%
-      select(olfrname, AntPos, VenDor, MedLat, side, everything())
-    
-    if (chooseOut == "plot") {
-      plot <- plot_ly(type = "scatter3d", mode = "markers") %>%
-        add_trace(data = blankdata,
-                  x = ~AntPos, y=~MedLat, z=~VenDor,
-                  color="shell", opacity=0.15,
-                  text = ~paste('AntPos:', AntPos,
-                                '<br>MedLat:', MedLat,
-                                '<br>VenDor:', VenDor),
-                  marker = list(size = 6)) %>%
-        add_trace(data = df_close_out, 
-                  x = ~AntPos, 
-                  y = ~MedLat, 
-                  z = ~VenDor, 
-                  color = ~olfrname,
-                  text = ~paste('Gene:', olfrname, 
-                                '<br>AntPos:', AP_selected,
-                                '<br>APvalue', AP_value,
-                                '<br>MedLat:', ML_selected,
-                                '<br>MLvalue:', ML_value,
-                                '<br>VenDor:', VD_selected,
-                                '<br>VDvalue:', VD_value,
-                                '<br>Side:', side,
-                                '<br>Point:', "Nearest Shell"),
-                  marker = list(size = 6, 
-                                line = list(color='black', width = 0.5))) %>%
-        layout(scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                            yaxis = list(title = 'Medial-Lateral'),
-                            zaxis = list(title = 'Ventral-Dorsal')))
-      return(plot)
-    } else if (chooseOut == "data") {
-      return(df_close_out)
-    } #endif
-  } #endif
-} #endfunction
-
-#compute distances between heatmap peak point and good point data featuring eurovision movie memes
-DistHeat3D <- function(olfr_list, heat_dimrep = 1, heat_dv = "oe", heat_raw = F) {
-  doubletrouble <- tibble(olfrname = character(), side = character(), 
-                          distance = numeric(), ap_ml_vd_3d = character(), 
-                          ap_ml_vd_heat = character(), .rows = 0)
-  
-  for (i in 1:length(olfr_list)) {
-    heatpoint <- Heat3D(olfr_list[i], dimrep = heat_dimrep, 
-                        dv = heat_dv, raw = heat_raw, chooseOut = "data") %>%
-      select(olfrname, AntPos, MedLat, VenDor, side) %>% 
-      mutate(origin = "heat",
-             ap_ml_vd_heat = paste(AntPos, MedLat, VenDor,sep = "_"))
-    
-    goodpoint <- good_point %>% 
-      filter(olfrname == olfr_list[i]) %>% 
-      select(olfrname, AntPos, MedLat, VenDor, side) %>% 
-      mutate(origin = "3d",
-             ap_ml_vd_3d = paste(AntPos, MedLat, VenDor,sep = "_")) 
-    
-    doubletrouble <- bind_rows(doubletrouble, 
-                                  left_join(heatpoint, goodpoint, 
-                                            by = c("olfrname", "side"), 
-                                            suffix = c("_h", "_3")) %>%
-                                    mutate(distance = sqrt((AntPos_h - AntPos_3)^2 +
-                                                             (MedLat_h - MedLat_3)^2 +
-                                                             (VenDor_h - VenDor_3)^2)) %>%
-                                    select(olfrname, side, distance, 
-                                           ap_ml_vd_3d, ap_ml_vd_heat))
-  } #endfor
-  doubletrouble <- doubletrouble %>% 
-    mutate(dimrep = heat_dimrep,
-           vd_assignment = heat_dv,
-           use_raw = heat_raw)
-  return(doubletrouble)
-} #endfunction
+} #end ListDorML
 ```
 
 
-# Build model
-Input: TPM (gene length and sequence depth normalized expression unit) for 1088 intact ORs across 269 samples across 6 Anterior-Posterior, 3 Medial-Lteral, and 3 Ventral-Dorsal 100um vibratome sliced single OBs.
-```{r, eval=F}
-kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv", col_names = TRUE) %>% select(-X1) %>% filter(dimrep == 1 | dimrep == 2)
-ectopic <- c("Olfr287","Olfr32")
-kzYgood <- dplyr::select(kzY, -ectopic) %>% dplyr::select(-name, -rep, -slice, -dim, -dimrep)
+# Load info and features
+Both sexes represented in each dimensional group.
+Line of glomeruli symmetry determined from 1D AP,ML heatmap mean of top 2 peaks
+Olfr features - class, tanzone, matsunami OE diffE, RTPdko
+OB scaffold with 2922 voxels, OR positions will only be assigned to these positions
+```{r, warning=F}
+#feature info
+info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/info_210127.csv", 
+                 col_names = TRUE) %>% 
+  rename("olfrname" = "gene")
+
+#line of bulb symmetry as found using single-dimension heatmap data
+#the average of the two calculated lines is used to call whether a predicted glomeruli position is medial or lateral
+symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline_3rep.csv")
+ggplot() +
+  geom_blank() +
+  geom_abline(aes(slope = 0.32655, intercept = 7.61119, color = "rep1")) +
+  geom_abline(aes(slope = 0.24922, intercept = 8.83890, color = "rep2")) +
+  geom_abline(aes(slope = 0.287885, intercept = 8.225045, color = "mean")) +
+  xlim(0,23) +
+  ylim(0,22) + 
+  ggtitle("Glomeruli symmetry line as calculated by single dimension heatmap peaks") +
+  xlab("Mean position of top 2 AP peaks") +
+  ylab("Mean position of top 2 ML peaks")
+
+# Example 3D left OB for future orientation of dimensions
+#blankdata <- Scat_rank("Olfr881", 1, "data") %>% select(AntPos:VenDor) %>% arrange(AntPos, MedLat, VenDor)
+#write_csv(blankdata, "~/Desktop/rproj/obmap/allmice/v21_gen25/base_files/blankOBcoords.csv")
+#blankOBcoords200922
+blankdata <- readRDS("~/Desktop/obmap/r_analysis/mri_to_R/output/210310_cubegrid_rescaled_concaveMedial_outeronly.RDS") %>% 
+  unique()
+dvml_blank <- blankdata %>%
+  mutate(dimdv = ifelse(VenDor >= 13, 
+                        "Dorsal", 
+                        "Ventral"),
+         dimml = ifelse(MedLat > 17, 
+                        "Lateral",
+                        ifelse(MedLat < 5,
+                               "Medial",
+                               NA)),
+         dim = ifelse(is.na(dimml), dimdv, dimml)) %>%
+  rowwise() %>%
+  mutate(symdim = ifelse(MedLat == round(symline$mlvals[which(symline$apvals == AntPos)]),"SymLine", dim)) %>%
+  ungroup()
+
+#blankOB
+plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor, 
+        text = ~paste('Dim: ', dim,
+                      '<br>AP:', AntPos, 
+                      '<br>ML:', MedLat,
+                      '<br>VD:', VenDor),
+        marker = list(size = 8, symbol = "circle"),
+        type = 'scatter3d',
+        mode = 'markers',
+        hoverinfo = "none",
+        hovertext="none") %>%
+  layout(scene = list(xaxis = list(title = 'Medial-Lateral',
+                                   backgroundcolor="rgb(200, 200, 230",
+                                   gridcolor="rgb(255,255,255)",
+                                   showbackground=TRUE,
+                                   zerolinecolor="rgb(255,255,255"),
+                      yaxis = list(title = 'Anterior-Posterior',
+                                   backgroundcolor="rgb(200, 200, 230",
+                                   gridcolor="rgb(255,255,255)",
+                                   showbackground=TRUE,
+                                   zerolinecolor="rgb(255,255,255)"),
+                      zaxis = list(title = 'Ventral-Dorsal',
+                                   backgroundcolor="rgb(200, 200, 230",
+                                   gridcolor="rgb(255,255,255)",
+                                   showbackground=TRUE,
+                                   zerolinecolor="rgb(255,255,255)")))
+
+#rankedolfr is a tidy_result ranked tibble using all intact olfr tpm
+#rankedchemo is a tidy_result ranked tibble using all intact chemosensory gene tpm
+#orbyorcor <- tibble(olfrname = ranked_olfr2$olfrname, orp50 = ranked_olfr2$p50, chemp50 = ranked_chemORs$p50) %>% group_by(olfrname) %>% summarise(cor = cor(orp50, chemp50)) %>% left_join(info, by = "olfrname")
+orXor_cor <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/chemoVolfr_p50.csv")
+ggplot(orXor_cor) + geom_violin(aes(oe_region, cor)) + 
+  ggtitle("150iter, using all Chemo does not significantly alter voxel probability rankings")
+```
+
+
+
+# Prep for model build
+```{r}
+filterORs <- readRDS("~/Desktop/obmap/r_analysis/heatmaps/output/filterORs.RDS")
+kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo2_over_samples_210227.csv", col_names = TRUE) %>% 
+  filter(dimrep < 4) %>%
+  select(-contains("Vmn"))
+
+kzYgood <- kzY %>% select(-name, -rep, -slice, -dim, -dimrep)
 dim(kzYgood) #1100 minus number of genes in ectopic
 kzmY <- as.matrix(kzYgood)
 rownames(kzmY) <- paste0("sample", 1:dim(kzY)[1])
 
 #rdirichlet requires vector not dataframe so matrix the tibble
-kzX <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/allmice_covariates_trim_voxweights_v3.csv") %>% filter(name %in% kzY$name)
+#kzX <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/allmice_covariates_trim_voxweights_v4.csv") %>% filter(name %in% kzY$name)
+#make covariates from 3d model
+cntAP <- blankdata %>% group_by(AntPos) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "AntPos") %>% rename("slice" = "AntPos")
+cntML <- blankdata %>% group_by(MedLat) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "MedLat") %>% rename("slice" = "MedLat")
+cntVD <- blankdata %>% group_by(VenDor) %>% summarise(count = n(), weight = count/nrow(blankdata)) %>% mutate(dim = "VenDor") %>% rename("slice" = "VenDor")
+
+cntall <- bind_rows(cntAP, cntML) %>% bind_rows(cntVD)
+
+kzX <- kzY %>% left_join(cntall, by = c("dim", "slice")) %>% select(name, rep, slice, dim, dimrep, count, weight)
+
 N <- dim(kzmY)[1] #number of sections
 D <-  dim(kzmY)[2] #number of genes
 
@@ -840,7 +785,12 @@ D <-  dim(kzmY)[2] #number of genes
 d1 <- 23 #antpost
 d2 <- 22 #medlat
 d3 <- 23 #vendor
+```
 
+
+# Build model
+Input: TPM (gene length and sequence depth normalized expression unit) for 1088 intact ORs across 269 samples across 6 Anterior-Posterior, 3 Medial-Lteral, and 3 Ventral-Dorsal 100um vibratome sliced single OBs.
+```{r, eval=F}
 #load voxels from bulb_in_cube 
 # voxalls_test <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/blankOBcoords200922.csv") %>% mutate(type = "latfill") #incorporating fill for 1 voxel thick layer on most lateral surface
 # voxalls_0 <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/input/191010_outer_inner_coords_ml23nohole.RDS")
@@ -850,7 +800,7 @@ d3 <- 23 #vendor
 # vox_ml <- vox_ap[which(vox_ap$MedLat <= d2),]
 # vox_vd <- vox_ml[which(vox_ml$VenDor <= d3),]
 # voxalls <- vox_vd %>% select(-type) %>% unique()
-voxalls <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/voxalls_200924.csv")
+voxalls <- blankdata
 
 # voxweights <- voxalls %>% 
 #   group_by(AntPos) %>% 
@@ -878,12 +828,12 @@ voxalls <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/voxalls_200924.csv"
 #   rename(slice = VenDor, count = vd.cnt, weight = vd.weight)
 # voxweights <- bind_rows(vw_ml, vw_vd, vw_ap)
 #write_csv(voxweights, "~/Desktop/obmap/r_analysis/3dimOB/input/voxweights_200923.csv")
-voxweights <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/voxweights_200923.csv")
+#voxweights <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/voxweights_200923.csv")
 
 # pick prior and Monte Carlo Sample 
 alpha <- matrix(0.65, N, D)
-iter <- 200
-pi_post <- Sample_data(kzmY, alpha, iter) 
+iter <- 500
+pi_post <- SampleData(kzmY, alpha, iter) 
 
 check <- ifelse(t(voxalls[,kzX$dim]) == kzX$slice, T, F)
 weights <- ifelse(check, kzX$weight, 0)
@@ -938,115 +888,15 @@ tidy_result <- data.frame(voxel=rep(1:d[2], times=D),
 head(tidy_result)
 sumend <- Sys.time()
 (sumtime <- sumend - sumstr)
-saveRDS(tidy_result, file = "~/Desktop/obmap/r_analysis/3dimOB/tidyresults/200i_allchemo_dimrep12_allvox.RDS")
+saveRDS(tidy_result, file = "~/Desktop/obmap/r_analysis/3dimOB/tidyresults/f210310_500i_allchemo2_dr123_onlyORTAAR_newOBmodel_concavemedial_outeronly.RDS")
 ```
 
 
-# Load info and features
-Both sexes represented in each dimensional group.
-Line of glomeruli symmetry determined from 1D AP,ML heatmap mean of top 2 peaks
-Olfr features - class, tanzone, matsunami OE diffE, RTPdko
-OB scaffold with 2922 voxels, OR positions will only be assigned to these positions
-```{r, warning=F}
-kzY <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactchemo_over_samples_200923.csv", col_names = TRUE) %>% select(-X1) %>% filter(dimrep == 1 | dimrep == 2)
-ectopic <- c("Olfr287","Olfr32")
-kzYgood <- dplyr::select(kzY, -ectopic) %>% dplyr::select(-name, -rep, -slice, -dim, -dimrep)
-dim(kzYgood) #1100 minus number of genes in ectopic
-kzmY <- as.matrix(kzYgood)
-rownames(kzmY) <- paste0("sample", 1:dim(kzY)[1])
 
-#dimwise TPM plot
-s1 <- kzY %>% select(slice, dim, dimrep, Olfr1377) %>% mutate(olfr = "1377") %>% rename("gene" = "Olfr1377")
-s8 <- kzY %>% select(slice, dim, dimrep, Olfr881) %>% mutate(olfr = "881") %>% rename("gene" = "Olfr881")
-scombo <- bind_rows(s1,s8)
-ggplot(scombo) + 
-  geom_line(aes(slice, gene, color = olfr)) + 
-  facet_grid(vars(dimrep), vars(dim), scales = "free_y") +
-  ggtitle("TPM of Olfr881/1377 across dimensions and replicates")
-
-#Examine Olfr881 TPM for all mice replicates from all dims
-ggplot(kzY) + geom_line(aes(slice, Olfr881)) + 
-  facet_grid(vars(dimrep), vars(dim), scales = "free_y") +
-  ggtitle("TPM of Olfr881 across dimensions and replicates")
-
-#feature info
-info <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/knowntanwavgFI.csv", col_names = TRUE) %>% 
-  rename("olfrname" = "gene") %>%
-  select(olfrname:RTP, known, lowTPM)
-
-#line of bulb symmetry as found using single-dimension heatmap data
-#the average of the two calculated lines is used to call whether a predicted glomeruli position is medial or lateral
-symline <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/symline.csv")
-ggplot() +
-  geom_blank() +
-  geom_abline(aes(slope = 0.32655, intercept = 7.61119, color = "rep1")) +
-  geom_abline(aes(slope = 0.24922, intercept = 8.83890, color = "rep2")) +
-  geom_abline(aes(slope = 0.287885, intercept = 8.225045, color = "mean")) +
-  xlim(0,23) +
-  ylim(0,22) + 
-  ggtitle("Glomeruli symmetry line as calculated by single dimension heatmap peaks") +
-  xlab("Mean position of top 2 AP peaks") +
-  ylab("Mean position of top 2 ML peaks")
-
-# Example 3D left OB for future orientation of dimensions
-#blankdata <- Scat_rank("Olfr881", 1, "data") %>% select(AntPos:VenDor) %>% arrange(AntPos, MedLat, VenDor)
-#write_csv(blankdata, "~/Desktop/rproj/obmap/allmice/v21_gen25/base_files/blankOBcoords.csv")
-#blankOBcoords200922
-blankdata <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/blankOBcoords200922.csv")
-dvml_blank <- blankdata %>%
-  mutate(dimdv = ifelse(VenDor >= 13, 
-                        "Dorsal", 
-                        "Ventral"),
-         dimml = ifelse(MedLat > 17, 
-                        "Lateral",
-                        ifelse(MedLat < 5,
-                               "Medial",
-                               NA)),
-         dim = ifelse(is.na(dimml), dimdv, dimml)) %>%
-  rowwise() %>%
-  mutate(symdim = ifelse(MedLat == round(symline$mlvals[which(symline$apvals == AntPos)]),"SymLine", dim)) %>%
-  ungroup()
-
-#blankOB
-plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor, 
-        text = ~paste('Dim: ', dim,
-                      '<br>AP:', AntPos, 
-                      '<br>ML:', MedLat,
-                      '<br>VD:', VenDor),
-        marker = list(size = 8, symbol = "circle"),
-        type = 'scatter3d',
-        mode = 'markers',
-        hoverinfo = "none",
-        hovertext="none") %>%
-  layout(scene = list(xaxis = list(title = 'Medial-Lateral',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255"),
-                      yaxis = list(title = 'Anterior-Posterior',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255)"),
-                      zaxis = list(title = 'Ventral-Dorsal',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255)")))
-
-#rankedolfr2 is a tidy_result ranked tibble using all intact olfr tpm
-#rankedchemo is a tidy_result ranked tibble using all intact chemosensory gene tpm
-#orbyorcor <- tibble(olfrname = ranked_olfr2$olfrname, orp50 = ranked_olfr2$p50, chemp50 = ranked_chemORs$p50) %>% group_by(olfrname) %>% summarise(cor = cor(orp50, chemp50)) %>% left_join(info, by = "olfrname")
-orXor_cor <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/chemoVolfr_p50.csv")
-ggplot(orXor_cor) + geom_violin(aes(oe_region, cor)) + 
-  ggtitle("150iter, using all Chemo does not significantly alter voxel probability rankings")
-```
-
-
-#load tidy result and ranked
+# load tidy result and ranked
 ```{r}
 #load model output
-tidy_result <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/tidyresults/200i_allchemo_dimrep12_allvox.RDS")
+#tidy_result <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/tidyresults/a_200i_allchemo_dimrep12_allvox.RDS")
 
 ranked <- tidy_result %>%
   arrange(gene) %>%
@@ -1073,6 +923,8 @@ ranked <- tidy_result %>%
   ungroup() %>% 
   select(p2.5, p50, p97.5, AntPos:ORrankpervox, geneRankSNR, 
          voxRankSNR, AP_Avgp50:voxSNRdim, voxel)
+
+ranked <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/tidyresults/e_ranked.RDS")
 ```
 
 
@@ -1115,14 +967,14 @@ p50plot("Olfr1377", 72, title = "Olfr1377 - Top 72 probability voxels")
 ## Clustering top ranked points
 Given a number of top probability ranked points, cluster spatial neighbors.
 ```{r}
-Cluster("Olfr881", 1000, minClustSize = 2, chooseOut = "plot", title = "Olfr881 - Clustered top 100 probability voxels")
-Cluster("Olfr1377", 125, minClustSize = 2, chooseOut = "plot", title = "Olfr1377 - Clustered top 100 probability voxels")
-# Cluster("Olfr16", chooseOut = 100, "plot")
-# Cluster("Olfr17", chooseOut = 100, "plot")
-# Cluster("Olfr15", chooseOut = 100, "plot")
-# Cluster("Olfr160", chooseOut = 100, "plot")
-# Cluster("Olfr155", chooseOut = 100, "plot")
-# Cluster("Olfr1507", chooseOut = 100, "plot")
+Cluster("Olfr881", 1000, minClustSize = 2, out = "plot", title = "Olfr881 - Clustered top 100 probability voxels")
+Cluster("Olfr1377", 125, minClustSize = 2, out = "plot", title = "Olfr1377 - Clustered top 100 probability voxels")
+# Cluster("Olfr16", out = 100, "plot")
+# Cluster("Olfr17", out = 100, "plot")
+# Cluster("Olfr15", out = 100, "plot")
+# Cluster("Olfr160", out = 100, "plot")
+# Cluster("Olfr155", out = 100, "plot")
+# Cluster("Olfr1507", out = 100, "plot")
 ```
 
 
@@ -1143,18 +995,51 @@ BestML("Olfr1377", clustersPerHalfBulb = 1, title = "Olfr1377 - Highest Probabil
 
 ## New Dorsal constraint function
 ```{r}
-DorsalML("Olfr881", title = "Olfr881 - OE constrained DV predictions")
-DorsalML("Olfr1377", title = "Olfr1377 - OE constrained DV predictions")
+DorsalML("Olfr881", topMin = 50, topBy = 50, title = "Olfr881 - DorsalML50")
+DorsalML("Olfr1377", topMin = 50, topBy = 50, title = "Olfr1377 - DorsalML50")
+DorsalML("Olfr16", topMin = 50, topBy = 50, title = "Olfr16/MOR23 - DorsalML50")
+DorsalML("Olfr17", topMin = 50, topBy = 50, title = "Olfr17/P2 - DorsalML50")
+DorsalML("Olfr15", topMin = 50, topBy = 50, title = "Olfr15/MOR256-17 - DorsalML50")
+DorsalML("Olfr160", topMin = 50, topBy = 50, title = "Olfr160/M72 - DorsalML50")
+DorsalML("Olfr155", topMin = 50, topBy = 50, title = "Olfr155/MOR37a - DorsalML50")
+DorsalML("Olfr1507", topMin = 50, topBy = 50, title = "Olfr1507/MOR28 - DorsalML50")
 ```
 
+# Find gloms for all ORs
+```{r, eval=F}
+allORs <- ranked %>% select(olfrname) %>% unique() %>% pull()
 
-# Make predicted positions for all genes 
-```{r}
-genenames <- colnames(kzmY)
-length(genenames)
+allDors <- ListDorML(allORs, by = 50, out = "data")
+saveRDS(allDors, "~/Desktop/obmap/r_analysis/3dimOB/output/f_allDors_by50.RDS")
 
-#out <- ListDorML(genenames, chooseOut = "data")
-#write_csv(out, "~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_dornonor_ldML_201012.csv")
-out <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/allchemo_dornonor_ldML_201012.csv")
+#allDors <- readRDS("~/Desktop/obmap/r_analysis/3dimOB/output/c_allDors_by100.RDS")
+
+allDorpoint <- allDors %>% 
+  filter(p50 == clustmaxp)
+
+#plot all ORs, both gloms, colored by basal
+shellpoints <- DorsalML("Olfr299", out = "notbest")
+
+plot_ly(type = "scatter3d", mode = "markers") %>% 
+      add_trace(data=shellpoints, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="shell", opacity=0.15,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_mean_p50:', clustmeanp,
+                              '<br>C_max_p50:', clustmaxp,
+                              '<br>Cluster:', clust_unique),
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=allDorpoint, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_mean_ML:', meanML,
+                              '<br>C_max_p50:', clustmaxp,
+                              '<br>Cluster:', clust_unique,
+                              '<br>SideRank:', sideRank),
+                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
 ```
 
