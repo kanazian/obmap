@@ -27,8 +27,8 @@ splitnames <- str_split(rawnames, ".genes")
 
 keynames <- vector(mode = "character", length = length(rawnames)+1)
 for (i in 1:length(rawnames)) {
-  keynames[1] <- "ens_raw"
-  keynames[i+1] <- splitnames[[i]][1]
+    keynames[1] <- "ens_raw"
+    keynames[i+1] <- splitnames[[i]][1]
 }
 
 #setup to make merge files
@@ -36,29 +36,29 @@ sample_file <- read_tsv(myfiles[1])
 
 mergetpm <- matrix(ncol = nrow(sample_file), nrow = length(myfiles) + 1)
 for (i in 1:length(myfiles)) {
-  if (i == 1) {
-    genes <- read_tsv(myfiles[i]) %>% select(gene_id) %>% as_vector()
-    mergetpm[i,] <- genes
-    mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
-  } else {
-    mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
-  }
+    if (i == 1) {
+        genes <- read_tsv(myfiles[i]) %>% select(gene_id) %>% as_vector()
+        mergetpm[i,] <- genes
+        mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
+    } else {
+        mergetpm[i+1,] <- read_tsv(myfiles[i]) %>% select(TPM) %>% as_vector()
+    }
 }
 
 preptpm <- as_tibble(mergetpm) %>% t() %>% as_tibble()
 colnames(preptpm) <- keynames
 
 enstrans <- read_csv("~/Desktop/obmap/r_analysis/inputs/convert_ensID_geneName.csv") %>%
-  select(ens_id, gene_name) %>%
-  unique()
+    select(ens_id, gene_name) %>%
+    unique()
 
 renamed <- preptpm %>%
-  rowwise() %>%
-  mutate(ens_id = str_split(ens_raw, "[.]")[[1]][1]) %>%
-  ungroup() %>%
-  left_join(enstrans, by = "ens_id") %>%
-  select(gene_name, everything()) %>%
-  unique()
+    rowwise() %>%
+    mutate(ens_id = str_split(ens_raw, "[.]")[[1]][1]) %>%
+    ungroup() %>%
+    left_join(enstrans, by = "ens_id") %>%
+    select(gene_name, everything()) %>%
+    unique()
 
 write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_allgenes_200817.csv")
 ```
@@ -67,21 +67,21 @@ write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_a
 # intermediate outputs
 ```{r, message=F, warning=F}
 olfronly <- renamed %>%
-  filter(str_detect(gene_name, "Olfr"))
+    filter(str_detect(gene_name, "Olfr"))
 write_csv(olfronly, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_allolfrs_200817.csv")
 
 intactonly <- olfronly %>%
-  filter(!str_detect(gene_name, "ps"))
+    filter(!str_detect(gene_name, "ps"))
 write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intactolfrs_200817.csv")
 
 taaronly <- renamed %>%
-  filter(str_detect(gene_name, "Taar")) %>%
-  filter(!str_detect(gene_name, "ps"))
+    filter(str_detect(gene_name, "Taar")) %>%
+    filter(!str_detect(gene_name, "ps"))
 write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intacttaars_200817.csv")
 
 vmnonly <- renamed %>%
-  filter(str_detect(gene_name, "Vmn")) %>%
-  filter(!str_detect(gene_name, "ps"))
+    filter(str_detect(gene_name, "Vmn")) %>%
+    filter(!str_detect(gene_name, "ps"))
 write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_intactvmn_200817.csv")
 
 chemo <- bind_rows(intactonly, taaronly, vmnonly)
@@ -92,11 +92,11 @@ write_csv(renamed, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_i
 #make genes_over_samples files ready for model input
 ```{r}
 old_covars <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/input/covarintactolfrs_over_samples_200923.csv") %>%
-  select(name:dimrep)
+    select(name:dimrep)
 
 new_file_divide <- old_covars %>% 
-  mutate(X1 = str_replace(name, "[.]", "S")) %>%
-  select(X1, everything(), -name)
+    mutate(X1 = str_replace(name, "[.]", "S")) %>%
+    select(X1, everything(), -name)
 
 
 intactflip <- intactonly %>% select(-ens_raw, -ens_id) %>% t()
@@ -114,31 +114,31 @@ write.csv(chemoflip, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_chemofl
 
 
 intactjoin <- read_csv("~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_intactflip.csv")%>%
-  mutate(X1 = rownames(intactflip)) %>%
-  select(X1, everything()) %>%
-  rowwise() %>%
-  mutate(O290 = Olfr290 + Olfr290_1) %>%
-  ungroup() %>%
-  select(-Olfr290, -Olfr290_1) %>%
-  rename(Olfr290 = O290)
+    mutate(X1 = rownames(intactflip)) %>%
+    select(X1, everything()) %>%
+    rowwise() %>%
+    mutate(O290 = Olfr290 + Olfr290_1) %>%
+    ungroup() %>%
+    select(-Olfr290, -Olfr290_1) %>%
+    rename(Olfr290 = O290)
 
 chemojoin <- read_csv("~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/temp_chemoflip.csv") %>%
-  as_tibble() %>%
-  mutate(X1 = rownames(chemoflip)) %>%
-  select(X1, everything()) %>% 
-  rowwise() %>% 
-  mutate(O290 = Olfr290 + Olfr290_1) %>%
-  ungroup() %>%
-  select(-Olfr290, -Olfr290_1) %>%
-  rename(Olfr290 = O290)
+    as_tibble() %>%
+    mutate(X1 = rownames(chemoflip)) %>%
+    select(X1, everything()) %>% 
+    rowwise() %>% 
+    mutate(O290 = Olfr290 + Olfr290_1) %>%
+    ungroup() %>%
+    select(-Olfr290, -Olfr290_1) %>%
+    rename(Olfr290 = O290)
 
 intactready <- new_file_divide %>%
-  left_join(intactjoin, by = "X1") %>%
-  rename("name" = "X1")
+    left_join(intactjoin, by = "X1") %>%
+    rename("name" = "X1")
 
 chemoready <- new_file_divide %>%
-  left_join(chemojoin, by = "X1") %>%
-  rename("name" = X1)
+    left_join(chemojoin, by = "X1") %>%
+    rename("name" = X1)
 
 write.csv(intactready, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/output/covarintactolfrs_over_samples_200923.csv")
 write.csv(chemoready, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/output/covarintactchemo_over_samples_200923.csv")
@@ -156,26 +156,26 @@ vmn_sums <- allgenes %>% select_if(str_detect(names(.), "^Vmn")) %>% rowSums()
 taar_sums <- allgenes %>% select_if(str_detect(names(.), "^Taar")) %>% rowSums()
 
 gene_sum_tb <- allgenes %>%
-  select(name:dimrep) %>%
-  add_column(sumolfr = olfr_sums,
-             sumvmn = vmn_sums,
-             sumtaar = taar_sums)
+    select(name:dimrep) %>%
+    add_column(sumolfr = olfr_sums,
+               sumvmn = vmn_sums,
+               sumtaar = taar_sums)
 
 ggplot(gene_sum_tb %>% filter(!is.na(dimrep))) +
-  geom_line(aes(slice, sumolfr, color = as_factor(dimrep))) +
-  facet_wrap(~ dim, nrow = 1, ncol = 3)
+    geom_line(aes(slice, sumolfr, color = as_factor(dimrep))) +
+    facet_wrap(~ dim, nrow = 1, ncol = 3)
 
 ggplot(gene_sum_tb %>% filter(dim == "AntPos")) +
-  geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
-  ggtitle("AntPos replicates - sum of OR tpm")
+    geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
+    ggtitle("AntPos replicates - sum of OR tpm")
 
 ggplot(gene_sum_tb %>% filter(dim == "MedLat")) +
-  geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
-  ggtitle("MedLat replicates - sum of OR tpm")
+    geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
+    ggtitle("MedLat replicates - sum of OR tpm")
 
 ggplot(gene_sum_tb %>% filter(dim == "VenDor")) +
-  geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
-  ggtitle("VenDor replicates - sum of OR tpm")
+    geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
+    ggtitle("VenDor replicates - sum of OR tpm")
 
 #seems like VD14, AP13, AP15 fall outside of their groups
 #interestingly ML16 fits in well, looking at my notes I used oldCap instead of newCap for that replicate (14,15,16)
@@ -183,8 +183,8 @@ ggplot(gene_sum_tb %>% filter(dim == "VenDor")) +
 #Vmnrs display a similar trend, taars are also similar
 
 ggplot(gene_sum_tb %>% filter(dim == "AntPos")) +
-  geom_line(aes(slice, sumtaar, color = as_factor(rep))) +
-  ggtitle("X replicates - sum of Taar tpm")
+    geom_line(aes(slice, sumtaar, color = as_factor(rep))) +
+    ggtitle("X replicates - sum of Taar tpm")
 
 #make normalization factors
 #what is my logic here for normalizing all values to approximately the same total?
@@ -215,7 +215,7 @@ normies <- rep_norms %>%
     select(-sumolfr, -meanOR, -normOR) %>%
     rename("rep_norms" = "norm_val") %>%
     left_join(dim_norms, by = c("dim", "slice")) %>%
-    select(name, rep_norms, dim_norms)
+    select(name, rep, slice, dim, dimrep, rep_norms, dim_norms)
 
 saveRDS(normies, "~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/totalORtpm_normalizations_210325.RDS")
 #check values
@@ -243,7 +243,7 @@ ggplot(check_norms %>% filter(dim == "AntPos")) +
 ggplot(check_norms %>% filter(dim == "AntPos")) +
     geom_line(aes(slice, dim_vmn, color = as_factor(rep))) +
     ggtitle("Vmnrs normalized by dimension")
-    
+
 
 #old way with file made in earlier chunk
 # allgenes <- read_csv("~/Desktop/obmap/r_analysis/inputs/make_TPMmtx/samples_over_allgenes_200817.csv") %>% select(-ens_raw, -ens_id)
