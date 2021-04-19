@@ -132,118 +132,125 @@ p50plot <- function(olfr, rankx = 50, title = NA) {
 #define clusters of best X p50 points using a pairwise matrix and ability to output plots and data
 #given a number of top ranking positions for an OR, cluster the points based on spatial position
 #why the hell am i ranking just to rerank with desc???
-Cluster <- function (olfr, topX = 72, minClustSize = 5, out = "plot", title = NA) {
-  df <- ranked %>% 
+Cluster <- function(olfr, df, topX = 25, 
+                    minClustSize = 3, distX = 3,
+                    out = "plot", title = NA) {
+  df_in <- df %>% 
     filter(olfrname == olfr) %>% 
-    mutate(rankofrank = min_rank(desc(min_rank(p50)))) %>% 
+    mutate(rankofrank = min_rank(desc(p50))) %>% 
     filter(rankofrank <= topX) %>% 
     arrange(desc(p50))
   
-  cut <- ranked %>% 
-    filter(olfrname == olfr) %>% 
-    mutate(rankofrank = min_rank(desc(min_rank(p50)))) %>% 
-    filter(rankofrank > topX) %>% 
-    arrange(desc(p50))
-  
   #make pairwise matrixes
-  dmatrix <- matrix(data = 0, nrow = nrow(df), ncol = nrow(df))
-  for (i in 1:nrow(df)) {
-    distances <- vector("numeric", length = nrow(df))
-    toprankvox <- df$voxel[i]
-    ap <- df$AntPos[i]
-    ml <- df$MedLat[i]
-    vd <- df$VenDor[i]
-    for (j in 1:nrow(df)) {
+  dmatrix <- matrix(data = 0, nrow = nrow(df_in), ncol = nrow(df_in))
+  for (i in 1:nrow(df_in)) {
+    distances <- vector("numeric", length = nrow(df_in))
+    toprankvox <- df_in$voxel[i]
+    ap <- df_in$AntPos[i]
+    ml <- df_in$MedLat[i]
+    vd <- df_in$VenDor[i]
+    for (j in 1:nrow(df_in)) {
       if (i == j) {
         distances[j] <- 0
       } else {
-        distances[j] <- sqrt((df$AntPos[i] - df$AntPos[j])^2 + 
-                               (df$MedLat[i] - df$MedLat[j])^2 +
-                               (df$VenDor[i] - df$VenDor[j])^2)
+        distances[j] <- sqrt((df_in$AntPos[i] - df_in$AntPos[j])^2 + 
+                               (df_in$MedLat[i] - df_in$MedLat[j])^2 +
+                               (df_in$VenDor[i] - df_in$VenDor[j])^2)
       } #endif
-    } #endforj
-    neighbors <- which(distances <= sqrt(3))
+    } #endf_inorj
+    neighbors <- which(distances <= sqrt(distX))
     dmatrix[neighbors, i] <- 1
-  } #endfori
+  } #endf_inori
   
   #cluster matrix
-  cluster_list <- rep(NA, nrow(df))
+  cluster_list <- rep(NA, nrow(df_in))
   for (k in 1:ncol(dmatrix)) {
-    #skip points that are already in a cluster
-    if (is.na(cluster_list[k])) {
-      round <- 1
-      #do a bunch of rounds, find a way to have it run until it stops finding new points
-      while (round < topX/3) {
-        neigh <- which(dmatrix[,k] == 1)
-        #for each neighbor of previous round of neighbors, find new neighbors
-        for (l in 1:length(neigh)) {
-          neigh <- c(neigh, which(dmatrix[,neigh[l]] == 1))
-          neigh <- neigh[-which(duplicated(neigh))]
-          neigh <- sort(neigh)
-        } #endforl
-        round <- round + 1
-      } #endwhile
-      cluster_list[neigh] <- k
-    } else {
-      next
-    } #endif
+    neighinit <- 0
+    neighlenchange <- 1
+    neigh <- which(dmatrix[,k] == 1)
+    #do a bunch of rounds, find a way to have it run until it stops finding new points
+    while (neighlenchange != 0) {
+      #for each neighbor of previous round of neighbors, find new neighbors
+      for (l in 1:length(neigh)) {
+        neigh <- c(neigh, which(dmatrix[,neigh[l]] == 1))
+        neigh <- sort(neigh[-which(duplicated(neigh))])
+      } #endforl
+      neighlen <- length(neigh)
+      neighlenchange <- neighlen - neighinit
+      neighinit <- neighlen
+    } #endwhile
+    cluster_list[neigh] <- k
   } #endfork
   
-  df_out <- df %>% mutate(rawclust = cluster_list) %>% 
+  df_out <- df_in %>% mutate(rawclust = cluster_list) %>% 
     group_by(rawclust) %>% 
     mutate(clustmaxp = max(p50), 
            clustminp = min(p50), 
            clustmeanp = mean(p50)) %>%
     add_tally() %>%
     ungroup() %>%
+    filter(n >= minClustSize) %>%
     mutate(clustmaxprank = dense_rank(desc(clustmaxp)), 
            clustmeanprank = dense_rank(desc(clustmeanp)), 
            clustsizerank = dense_rank(desc(n))) %>% 
     arrange(clustsizerank) %>%
-    mutate(isCluster = ifelse(n >= minClustSize, 1, 0), 
-           clust_unique = dense_rank(desc(clustmaxp * isCluster))) %>%
-    select(p2.5:ORrankpervox, rankofrank, rawclust:clustsizerank, clust_unique, isCluster)
-  
-  df_clustered <- df_out %>% filter(isCluster == 1)
-  too_small <- df_out %>% filter(isCluster == 0.5)
-  
-  cut_out <- cut %>% mutate(rawclust = NA,
-                            clustmaxp = NA,
-                            clustminp = NA,
-                            clustmeanp = NA,
-                            n = NA,
-                            clustmeanprank = NA,
-                            clustmaxprank = NA,
-                            clustsizerank = NA,
-                            isCluster = 0,
-                            clust_unique = NA) %>%
+    mutate(isCluster = T,
+           clust_unique = paste(olfrname, clustmaxprank, sep = "_")) %>%
     select(p2.5:ORrankpervox, 
            rankofrank, 
+           voxel,
            rawclust:clustsizerank, 
            clust_unique, 
-           isCluster) %>% 
-    bind_rows(too_small)
+           isCluster) %>%
+    filter(isCluster == T) %>%
+    arrange(clustmaxprank)
   
-  all_out <- bind_rows(df_clustered, cut_out) %>% unique()
+  df_voxels <- df_out %>% pull(voxel)
+  
+  cut_out <- df %>% 
+    filter(olfrname == olfr) %>% 
+    mutate(rankofrank = min_rank(desc(min_rank(p50)))) %>% 
+    filter(voxel %notin% df_voxels) %>% 
+    mutate(rawclust = NA,
+           clustmaxp = NA,
+           clustminp = NA,
+           clustmeanp = NA,
+           n = NA,
+           clustmeanprank = NA,
+           clustmaxprank = NA,
+           clustsizerank = NA,
+           isCluster = 0,
+           clust_unique = NA) %>%
+    select(p2.5:ORrankpervox, 
+           rankofrank, 
+           voxel,
+           rawclust:clustsizerank, 
+           clust_unique, 
+           isCluster)
+  
+  all_out <- bind_rows(df_out, cut_out) %>% 
+    unique()
   
   #return various things 'rgb(10,10,10)'
-  if (out == "data") {
+  if (str_detect(tolower(out), "data")) {
     return(all_out)
-  } else {
+  } else if (str_detect(tolower(out), "best")) {
+    return(df_out)  
+  } else  {
     p <-  plot_ly(type = "scatter3d", mode = "markers") %>% 
       add_trace(data=cut_out, x=~AntPos, y=~MedLat, z=~VenDor, 
                 color="shell", opacity=0.15,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
+                              '<br>C_mean_p50:', round(clustmeanp, digits = 5),
+                              '<br>C_max_p50:', round(clustmaxp, digits = 5),
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~clust_unique,
+      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~clustmaxprank,
                 text = ~paste('Gene:', olfrname, 
                               '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
+                              '<br>C_mean_p50:', round(clustmeanp, digits = 5),
+                              '<br>C_max_p50:', round(clustmaxp, digits = 5),
                               '<br>Cluster:', clust_unique),
                 marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
       layout(title = title,
@@ -668,6 +675,8 @@ ListDorML <- function(x, by, out = "plot", title = NA) {
     return(p)
   } #endif
 } #end ListDorML
+
+`%notin%` <- Negate(`%in%`)
 ```
 
 
@@ -745,6 +754,7 @@ cntAP <- blankdata %>% group_by(AntPos) %>% summarise(voxels = n(), vox_norms_ra
 cntML <- blankdata %>% group_by(MedLat) %>% summarise(voxels = n(), vox_norms_ratio2total = voxels/nrow(blankdata)) %>% mutate(dim = "MedLat") %>% rename("slice" = "MedLat")
 cntVD <- blankdata %>% group_by(VenDor) %>% summarise(voxels = n(), vox_norms_ratio2total = voxels/nrow(blankdata)) %>% mutate(dim = "VenDor") %>% rename("slice" = "VenDor")
 cntall <- bind_rows(cntAP, cntML) %>% bind_rows(cntVD)
+
 voxweights <- kzYprep %>% 
   left_join(cntall, by = c("dim", "slice")) %>% 
   select(name:dimrep, voxels, vox_norms_ratio2total) %>%
@@ -1122,7 +1132,349 @@ plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor,
 #orXor_cor <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/chemoVolfr_p50.csv")
 #ggplot(orXor_cor) + geom_violin(aes(oe_region, cor)) + 
 #  ggtitle("150iter, using all Chemo does not significantly alter voxel probability rankings")
-
-
 ```
 
+
+```{r}
+ListDorML(c("Olfr881", "Olfr1377"), by = 50, out = "point", title = "mKate2-ORs")
+ListDorML(c("Olfr881", "Olfr1377"), by = 50, title = "mKate2-ORs")
+```
+
+
+#ZZZworking
+# updating DorsalML function to better predict unusual zone ORs and ORs close to symline
+if unusual: find single best cluster regardless of symline? or perhaps target unusual zone
+if near symline: find single best cluster? perhaps enlarge?
+if dorsal: DorsalML
+if ventral: DorsalML
+After 1st round of postions, determine how many voxels are multimapped, kick out 
+from 210404 vox4B, potentially 488 gloms to redistribute if max 2 glom per voxel
+Allow medial glom to have slightly more variable DV position
+
+it may be faster to split ranked into Med and Lat dfs, and then run Cluster on each DF
+Maybe even splitting into MedDor, MedVen, LatDor, LatVen
+
+PredictList called PredictGloms on list of genes
+PredictGloms calls Cluster on a gene and picks appropriate candidates based on DV and symline position
+```{r}
+ranked <- readRDS("~/Desktop/obmap/r_analysis/data/3dimOB/model/210404_vox4B_rk_dtvt_OConly.RDS") %>% 
+  rowwise() %>% 
+  mutate(symside = ifelse(MedLat >= symline$mlvals[which(symline$apvals == AntPos)] - 2, "Lateral", "Medial")) %>%
+  ungroup()
+
+#ranked %>% filter(olfrname == "Olfr1377") %>% group_by(symside) %>% count()
+#ranked %>% filter(olfrname == "Olfr1377") %>% ggplot() + geom_point(aes(AntPos, MedLat, color = symside))
+
+ranked_Msym <- ranked %>% filter(symside == "Medial")
+ranked_Lsym <- ranked %>% filter(symside == "Lateral")
+ranked_MD <- ranked_Msym %>% filter(VenDor >= 10)
+ranked_MV <- ranked_Msym %>% filter(VenDor < 14)
+ranked_LD <- ranked_Lsym %>% filter(VenDor >= 12)
+ranked_LV <- ranked_Lsym %>% filter(VenDor < 12)
+ranked_unu <- ranked %>% filter(between(MedLat, 4, 11)) %>%
+  filter(between(VenDor, 5, 10))
+
+nrow(ranked) == (nrow(ranked_MD) + nrow(ranked_MV) + nrow(ranked_LD) + nrow(ranked_LV))
+
+tic()
+Cluster("Olfr1377", topX = 75, df = ranked, out = "data")
+toc()
+
+tic()
+Cluster("Olfr1377", topX = 20, df = ranked_LD, out = "plot")
+Cluster("Olfr1377", topX = 20, df = ranked_MD, out = "plot")
+toc()
+
+DVinfo <- info %>% 
+  select(olfrname:tz_vd, vd_mp) %>%
+  rowwise() %>%
+  mutate(DVscore = sum(ifelse(oe_region == "Dorsal", 1, 0),
+                       ifelse(tz_vd == "Dorsal", 2, 0), 
+                       na.rm=T)) %>%
+  ungroup() %>%
+  mutate(DVdiscord1 = case_when(tan_zone == "unusual" ~ "Unusual",
+                               DVscore >= 2 ~ "Dorsal",
+                               DVscore == 0 ~ "Ventral",
+                               DVscore == 1 ~ ifelse(vd_mp <= 11.5, 
+                                                     "Ventral_vdmp", "Dorsal_vdmp")),
+         DVdiscord2 = ifelse(is.na(DVdiscord1), 
+                             case_when(is.na(tz_vd) ~ paste(oe_region, "oere", sep="-"),
+                                       is.na(oe_region) ~ paste(tz_vd, "tzvd", sep="-")), 
+                             DVdiscord1),
+         DVdiscord = case_when(str_detect(DVdiscord2, "Dorsal") ~ "Dorsal",
+                               str_detect(DVdiscord2, "Ventral") ~ "Ventral",
+                               DVdiscord2 == "Unusual" ~ "Unusual"),
+         DVcertainty = case_when(DVscore == 2 ~ "High",
+                                 DVscore == 0 ~ "High",
+                                 str_detect(DVdiscord2, "_vdmp") ~ "Medium",
+                                 str_detect(DVdiscord2, "-") ~ "Low")) %>%
+  select(olfrname, DVdiscord, DVcertainty, vd_mp)
+
+DVinfo %>% select(DVdiscord, vd_mp) %>% filter(!is.na(DVdiscord)) %>% mutate(vd_rank = min_rank(vd_mp)) %>% ggplot() + geom_violin(aes(DVdiscord, vd_rank))
+
+#ZZZworking
+PredGloms <- function(olfr, topMin = 20, topBy = 10, 
+                      minSize = 3, clustOut = 1, 
+                      symconstrain = F, verbose = F,
+                      out = "plot", title = NA) {
+  if (verbose == T) print(olfr)
+  clustFound <- 0
+  topStep <- topMin
+  while (clustFound < clustOut) {
+    if (!str_detect(olfr, "Olfr")) {
+      df_lat <- Cluster(olfr, df = ranked_LD, 
+                        topX = topStep, minClustSize = minSize, 
+                        out = "best") %>% 
+        mutate(side = "Lat", step = topStep)
+      if (symconstrain == T) {
+        mostAnt <- df_lat %>%
+          pull(AntPos) %>%
+          min()
+        ranked_MDsym <- ranked_MD %>%
+          filter(AntPos >= (mostAnt - 1))
+        df_med <- Cluster(olfr, df = ranked_MDsym,
+                          topX = topStep, minClustSize = minSize,
+                          out = "best") %>% 
+          mutate(side = "Med", step = topStep)
+        df_all <- bind_rows(df_lat, df_med) %>%
+          filter(clustmaxprank <= clustOut)
+      } else {
+        df_med <- Cluster(olfr, df = ranked_MD, 
+                          topX = topStep, minClustSize = minSize,
+                          out = "best") %>% 
+          mutate(side = "Med", step = topStep)
+        df_all <- bind_rows(df_lat, df_med) %>%
+          filter(clustmaxprank <= clustOut)
+      } #endif
+    } else {
+      DVpos <- DVinfo %>%
+        filter(olfrname == olfr) %>%
+        select(DVdiscord) %>%
+        pull(DVdiscord)
+      DVcertainty <- DVinfo %>%
+        filter(olfrname == olfr) %>%
+        select(DVcertainty) %>%
+        pull(DVcertainty)
+      
+      if (DVpos[1] == "Unusual") {
+        df_all <- Cluster(olfr, df = ranked_unu,
+                          topX = topStep, minClustSize = 5,
+                          out = "best") %>%
+            filter(clustmaxprank <= clustOut)
+      
+      } else if (DVpos[1] == "Dorsal") {
+        df_lat <- Cluster(olfr, df = ranked_LD, 
+                          topX = topStep, minClustSize = minSize, 
+                          out = "best") %>% 
+          mutate(side = "Lat", step = topStep)
+        if (symconstrain == T) {
+          mostAnt <- df_lat %>%
+            pull(AntPos) %>%
+            min()
+          ranked_MDsym <- ranked_MD %>%
+            filter(AntPos >= (mostAnt - 1))
+          df_med <- Cluster(olfr, df = ranked_MDsym,
+                            topX = topStep, minClustSize = minSize,
+                            out = "best") %>% 
+            mutate(side = "Med", step = topStep)
+          df_all <- bind_rows(df_lat, df_med) %>%
+            filter(clustmaxprank <= clustOut)
+        } else {
+          df_med <- Cluster(olfr, df = ranked_MD, 
+                            topX = topStep, minClustSize = minSize,
+                            out = "best") %>% 
+            mutate(side = "Med", step = topStep)
+          df_all <- bind_rows(df_lat, df_med) %>%
+            filter(clustmaxprank <= clustOut)
+        } #endif
+        
+      } else if (DVpos[1] == "Ventral") {
+        df_lat <- Cluster(olfr, df = ranked_LV, 
+                          topX = topStep, minClustSize = minSize, 
+                          out = "best") %>% 
+          mutate(side = "Lat", step = topStep)
+        if (symconstrain == T) {
+          mostAnt <- df_lat %>%
+            pull(AntPos) %>%
+            min()
+          ranked_MVsym <- ranked_MV %>%
+            filter(AntPos >= (mostAnt - 1))
+          df_med <- Cluster(olfr, df = ranked_MVsym,
+                            topX = topStep, minClustSize = minSize,
+                            out = "best") %>% 
+            mutate(side = "Med", step = topStep)
+          df_all <- bind_rows(df_lat, df_med) %>%
+            filter(clustmaxprank <= clustOut)
+        } else {
+          df_med <- Cluster(olfr, df = ranked_MV, 
+                            topX = topStep, minClustSize = minSize,
+                            out = "best") %>% 
+            mutate(side = "Med", step = topStep)
+          df_all <- bind_rows(df_lat, df_med) %>%
+            filter(clustmaxprank <= clustOut)
+        } #endif symconstrain
+      } #endif DVpos[1]
+    } #endif Olfr
+    
+    cuflist <- df_all %>% 
+      mutate(cuf = paste(clust_unique, side, sep = "_")) %>%
+      select(cuf) %>%
+      unique() %>%
+      pull(cuf)
+    
+    clustFound <- length(cuflist)/2
+    
+    if (verbose == T) {
+      if (clustFound < clustOut) {
+        print(paste(topStep, NA))
+      } else {
+        print(topStep)
+      } #endif
+    } #endif
+    topStep <- topStep + topBy
+  } #endwhile
+  
+  df_best <- df_all %>%
+    mutate(fadenotbest = ifelse(p50 == clustmaxp, 1 , 0))
+  
+  #output
+  if (out == "data") {
+    return(df_best)
+  } else {
+    p <- plot_ly(type = "scatter3d", mode = "markers") %>%
+      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor,
+                color="shell", opacity=0.1,
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 1), 
+                x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="Best Probability",
+                text = ~paste('Gene:', olfrname,
+                              '<br>C_size_rank:', clustsizerank,
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 6, color = "red", 
+                              line = list(color = 'black', width = 0.5))) %>%
+      add_trace(data=df_best %>% filter(fadenotbest == 0), 
+                x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="High Probability",  opacity=0.6,
+                text = ~paste('Gene:', olfrname,
+                              '<br>C_size_rank:', clustsizerank,
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 6, color = "orange", 
+                              line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
+    return(p)
+  } #endif out
+} #end PredGloms
+
+PredList <- function(x, by = 10, out = "plot", title = NA) {
+  #use a list to build a df of unknown size instead of bind_row each iteration
+  list_out <- vector("list", length = length(x))
+  for (i in 1:length(x)) {
+    list_out[[i]] <- PredGloms(x[i], topBy = by, symconstrain = T, verbose = T, out = "best")
+  } #endfori
+  
+  df_out <- bind_rows(list_out)
+  
+  #output
+  if (out == "data") {
+    return(df_out)
+  } else if (out == "point") {
+    df_point <- df_out %>% filter(p50 == clustmaxp)
+    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
+      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="shell", opacity=0.15,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
+    return(p)
+  } else {
+    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
+      add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="shell", opacity=0.15,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
+                text = ~paste('Gene:', olfrname, 
+                              '<br>C_size_rank:', clustsizerank, 
+                              '<br>C_max_p50:', clustmaxp),
+                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
+    return(p)
+  } #endif
+}
+
+df_in <- ranked_unu %>% 
+  filter(olfrname == "Olfr155") %>% 
+  mutate(rankofrank = min_rank(desc(p50))) %>% 
+  filter(rankofrank <= 25) %>% 
+  arrange(desc(p50))
+
+#make pairwise matrixes
+dmatrix <- matrix(data = 0, nrow = nrow(df_in), ncol = nrow(df_in))
+for (i in 1:nrow(df_in)) {
+  distances <- vector("numeric", length = nrow(df_in))
+  toprankvox <- df_in$voxel[i]
+  ap <- df_in$AntPos[i]
+  ml <- df_in$MedLat[i]
+  vd <- df_in$VenDor[i]
+  for (j in 1:nrow(df_in)) {
+    if (i == j) {
+      distances[j] <- 0
+    } else {
+      distances[j] <- sqrt((df_in$AntPos[i] - df_in$AntPos[j])^2 + 
+                             (df_in$MedLat[i] - df_in$MedLat[j])^2 +
+                             (df_in$VenDor[i] - df_in$VenDor[j])^2)
+    } #endif
+  } #endf_inorj
+  neighbors <- which(distances <= sqrt(3))
+  dmatrix[neighbors, i] <- 1
+} #endf_inori
+
+#cluster matrix
+cluster_list <- rep(NA, nrow(df_in))
+for (k in 1:ncol(dmatrix)) {
+  neighinit <- 0
+  neighlenchange <- 1
+  neigh <- which(dmatrix[,k] == 1)
+  #do a bunch of rounds, find a way to have it run until it stops finding new points
+  while (neighlenchange != 0) {
+    #for each neighbor of previous round of neighbors, find new neighbors
+    for (l in 1:length(neigh)) {
+      neigh <- c(neigh, which(dmatrix[,neigh[l]] == 1))
+      neigh <- sort(neigh[-which(duplicated(neigh))])
+    } #endforl
+    neighlen <- length(neigh)
+    neighlenchange <- neighlen - neighinit
+    neighinit <- neighlen
+    print(paste("k:", k))
+    print(paste("neighlen:", length(neigh)))
+  } #endwhile
+  cluster_list[neigh] <- k
+} #endfork
+
+startsize <- 1
+endsize <- 1
+while (endsize != startsize) {
+  for (i in 1:nrow(df_in)) {
+    
+  }
+}
+```
