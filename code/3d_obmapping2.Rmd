@@ -25,6 +25,7 @@ library(driver) # devtools::install_github("jsilve24/driver")
 library(Rcpp)
 library(ggsci)
 library(cowplot)
+library(magrittr)
 #detach("package:vegan", unload=TRUE)
 
 # functions -----------------------------------------------------------
@@ -41,10 +42,10 @@ SampleData <- function(Y, alpha, iter=1){
 sourceCpp("~/Desktop/obmap/r_analysis/data/3dimOB/model/kzcolQuant.cpp")
 
 #function for distance between 3d points
-Dist3d <- function(df, row1, row2) {
-  thing <- sqrt((df$AntPos[row1] - df$AntPos[row2])^2 +
-                  (df$MedLat[row1] - df$MedLat[row2])^2 + 
-                  (df$VenDor[row1] - df$VenDor[row2])^2)
+Dist3d <- function(df1, df2, row1, row2) {
+  thing <- sqrt((df1$AntPos[row1] - df2$AntPos[row2])^2 +
+                  (df1$MedLat[row1] - df2$MedLat[row2])^2 + 
+                  (df1$VenDor[row1] - df2$VenDor[row2])^2)
   return(thing)
 } #end Dist3d
 
@@ -260,434 +261,6 @@ Cluster <- function(olfr, df, topX = 25,
     return(p)
   } #endif
 } #end Cluster
-
-#run cluster given an incrementing number of voxels to cluster from
-#needs to also output some sort of summary statistic to define the optimal number of initial voxels that returns the "best" clusters 
-BestML <- function(olfr, topMin = 50, topMax = 200, topBy = 25, minSize = 2,
-                   clustersPerHalfBulb = 1, out = "plot", title = NA) {
-  cphb <- 0
-  topStep <- topMin
-  while (cphb < clustersPerHalfBulb) {
-    df_in <- Cluster(olfr, df = ranked, topX = topStep, minClustSize = minSize, out = "data")
-    df_ml <- df_in %>% 
-      filter(isCluster == 1) %>% 
-      group_by(clust_unique) %>% 
-      mutate(meanML = mean(MedLat),
-             meanAP = mean(AntPos),
-             meanVD = mean(VenDor),
-             clustrank = min_rank(desc(p50))) %>% 
-      ungroup() %>%
-      rowwise() %>%
-      mutate(fadenotbest = ifelse(clustrank == 1, 1, 0),
-             side = ifelse(meanML >= symline$mlvals[which(symline$apvals == round(meanAP))],
-                           "Lateral", "Medial")) %>% 
-      ungroup() 
-    
-    df_bestM <- df_ml %>% 
-      filter(side == "Medial") %>%
-      mutate(MedRank = dense_rank(clust_unique),
-             LatRank = NA,
-             TopStep = topStep,
-             sideRank = MedRank) %>%
-      filter(MedRank <= clustersPerHalfBulb)
-    
-    df_bestL <- df_ml %>%
-      filter(side == "Lateral") %>%
-      mutate(MedRank = NA,
-             LatRank = dense_rank(clust_unique),
-             TopStep = topStep,
-             sideRank = LatRank) %>%
-      filter(LatRank <= clustersPerHalfBulb)
-    
-    clust_bestM <- unique(df_bestM$clust_unique)
-    clust_bestL <- unique(df_bestL$clust_unique)
-    
-    #checks and counters
-    cphb <- min(length(clust_bestM), length(clust_bestL))
-    topStep <- topStep + topBy
-  } #endwhile
-  
-  clust_bestML <- c(clust_bestM, clust_bestL)
-  which_bestML <- df_in[-which(df_ml$clust_unique %in% clust_bestML),]
-  
-  df_notbest <- df_in %>% 
-    mutate(sideRank = NA) %>% 
-    select(-clust_unique) %>% 
-    mutate(clust_unique = NA)
-  df_best <- bind_rows(df_bestM, df_bestL)
-  df_all <- bind_rows(df_best, df_notbest)
-  
-  #output
-  if (out == "data") {
-    return(df_all)
-  } else if (out == "best") {
-    return(df_best)
-  } else if (out == "notbest") {
-    return(df_notbest)
-  } else {
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=df_notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_best %>% filter(fadenotbest == 1), x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="Best Probability",
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, color = "red", line = list(color = 'black', width = 0.5))) %>%
-      add_trace(data=df_best %>% filter(fadenotbest == 0), x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="High Probability", opacity = 0.4,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, color = "orange", line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } #endif
-} #end BestML
-
-#given a list of Olfr names, output 1 medial and 1 lateral cluster for each name
-#perhaps add an if or arg for really big lists to run a reduced step
-ListML <- function(x, out = "plot", title = NA) {
-  #use a list to build a df of unknown size instead of bind_row each iteration
-  list_out <- vector("list", length = length(x))
-  for (i in 1:length(x)) {
-    list_out[[i]] <- BestML(x[i], topMin = 50, topMax = 150, topBy = 50, 
-                            minSize = 2, clustersPerHalfBulb = 1, out = "best")
-  } #endfor
-  
-  #always need notbest for the shape shell1
-  notbest <- BestML(x[1], topMin = 100, topMax = 150, topBy = 50, minSize = 2, 
-                    clustersPerHalfBulb = 1, out = "notbest")
-  df_out <- bind_rows(list_out)
-  
-  #output
-  if (out == "data") {
-    return(df_out)
-  } else if (out == "point") {
-    df_point <- df_out %>% filter(p50 == clustmaxp)
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 6)) %>%
-      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } else {
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } #endif
-} #end ListML
-
-#run Cluster and check if either top ranked M or L glom is dorsal and has known dorsal expression or is class 1. If True, find a dorsal glom for both M and L
-DorsalML <- function(olfr, topMin = 50, topBy = 50, minSize = 3,
-                     clustIn = 5, clustOut = 1, 
-                     out = "plot", title = NA, 
-                     breakX = 10, verbose = F) {
-  if (verbose == T) print(olfr)
-  clustFound <- 0
-  topStep <- topMin
-  while (clustFound != clustOut) {
-    df_in <- Cluster(olfr, df = ranked, topX = topStep, minClustSize = minSize, out = "data")
-    df_ml <- df_in %>% 
-      filter(isCluster == 1) %>% 
-      group_by(clust_unique) %>% 
-      mutate(meanML = mean(MedLat),
-             meanAP = mean(AntPos),
-             meanVD = mean(VenDor),
-             clustrank = min_rank(desc(p50))) %>%
-      ungroup() %>%
-      rowwise() %>%
-      mutate(fadenotbest = ifelse(clustrank == 1, 1, 0),
-             side = ifelse(meanML >= symline$mlvals[which(symline$apvals == round(meanAP))],
-                           "Lateral", "Medial")) %>% 
-      ungroup() %>%
-      left_join(info, by = "olfrname") %>%
-      rowwise() %>% 
-      mutate(dorsalRating = sum(ifelse(class == 1, 2, 0), 
-                                ifelse(tz_val < 2, 1, 0),
-                                ifelse(oe_region == "Dorsal", 1, 0),
-                                ifelse(str_detect(olfrname, "Olfr"), 0, 2),
-                                na.rm = T)) %>%
-      ungroup()
-    
-    df_bestM <- df_ml %>% 
-      filter(side == "Medial") %>%
-      mutate(MedRank = dense_rank(clust_unique),
-             LatRank = NA,
-             TopStep = topStep,
-             sideRank = MedRank) %>%
-      filter(MedRank <= clustIn) %>%
-      arrange(MedRank)
-    
-    df_bestL <- df_ml %>%
-      filter(side == "Lateral") %>%
-      mutate(MedRank = NA,
-             LatRank = dense_rank(clust_unique),
-             TopStep = topStep,
-             sideRank = LatRank) %>%
-      filter(LatRank <= clustIn) %>%
-      arrange(LatRank)
-    
-    max <- max(c(df_bestM$meanVD[1], df_bestL$meanVD[1]))
-    min <- min(c(df_bestM$meanVD[1], df_bestL$meanVD[1]))
-    
-    if (is.na(max)) {
-      if (verbose == T) print(paste("NA", as.character(topStep)))
-      topStep <- topStep + topBy
-      # if topStep is too high, cluster takes too long and will likely not find 2 gloms, break
-      if (topStep > (topMin * breakX)) {
-        print("broken")
-        df_broken <- Cluster(olfr, df = ranked, topX = 2, minClustSize = 1, out = "best") %>%
-          mutate(meanML = NA,
-                 meanAP = NA,
-                 meanVD = NA,
-                 clustrank = NA,
-                 fadenotbest = NA,
-                 side = "Broken",
-                 dorsalRating = NA,
-                 MedRank = NA,
-                 LatRank = NA,
-                 TopStep = topStep,
-                 sideRank = NA)
-        return(df_broken)
-        break
-      }
-      next
-    } else {
-      if (max >= 13) {
-        if (min < 13) {
-          if (df_bestM$dorsalRating[1] >= 2) {
-            #OR has dorsal info, constrain both med/lat to have dorsal glom
-            if (df_bestM$meanVD[1] == max) {
-              #Medial was dorsal, find dorsal lateral glom and viceversa
-              df_bestM <- df_bestM %>%
-                filter(MedRank == 1)
-              df_bestL <- df_bestL %>%
-                filter(meanVD >= 13) %>%
-                filter(LatRank == min(LatRank))
-              
-            } else if (df_bestL$meanVD[1] == max) {
-              df_bestL <- df_bestL %>%
-                filter(LatRank == 1)
-              df_bestM <- df_bestM %>% 
-                filter(meanVD >= 13) %>%
-                filter(MedRank == min(MedRank))
-            } #endif df_bestM$meanVD[1] == max
-          } else if (df_bestM$dorsalRating[1] == 1) {
-            #OR has mixed info, return best
-            df_bestM <- df_bestM %>% filter(MedRank == 1)
-            df_bestL <- df_bestL %>% filter(LatRank == 1)
-          } else {
-            #OR has ventral info, constrain both med/lat to have ventral glom
-            if (df_bestM$meanVD[1] == min) {
-              #Medial was ventral, find ventral ateral glom and viceversa
-              df_bestM <- df_bestM %>%
-                filter(MedRank == 1)
-              df_bestL <- df_bestL %>%
-                filter(meanVD < 13) %>%
-                filter(LatRank == min(LatRank))
-              
-            } else if (df_bestL$meanVD[1] == min) {
-              df_bestL <- df_bestL %>%
-                filter(LatRank == 1)
-              df_bestM <- df_bestM %>% 
-                filter(meanVD < 13) %>%
-                filter(MedRank == min(MedRank))
-            } #endif (df_bestM$meanVD[1] == min)
-          } #endif (df_bestM$dorsalRating[1] >= 2)
-        } #endif (min < 13)
-      } else {
-        #both gloms are ventral, check if dorsal info
-        if (df_bestM$dorsalRating[1] >= 2) {
-          #both gloms are ventral, but OR has dorsal info, constrain to dorsal
-          df_bestM <- df_bestM %>%
-            filter(meanVD >= 13) %>%
-            filter(MedRank == min(MedRank))
-          df_bestL <- df_bestL %>%
-            filter(meanVD >= 13) %>%
-            filter(LatRank == min(LatRank))
-        } else {
-          df_bestM <- df_bestM %>% filter(MedRank == 1)
-          df_bestL <- df_bestL %>% filter(LatRank == 1)
-        } #endif (df_bestM$dorsalRating[1] >= 2)
-      } #endif (max >= 13)
-    } #endif (is.nax(max))
-    
-    df_bestM <- df_bestM %>% filter(MedRank == min(MedRank))
-    df_bestL <- df_bestL %>% filter(LatRank == min(LatRank))
-    
-    clust_bestM <- unique(df_bestM$clust_unique)
-    clust_bestL <- unique(df_bestL$clust_unique)
-    
-    #checks and counters
-    clustFound <- min(c(length(clust_bestM), length(clust_bestL)))
-    topStep <- topStep + topBy
-    clustIn <- round(clustIn * 1.5)
-  } #endwhile
-  
-  clust_bestML <- c(clust_bestM, clust_bestL)
-  which_bestML <- df_in[-which(df_ml$clust_unique %in% clust_bestML),]
-  
-  df_best <- bind_rows(df_bestM, df_bestL) %>% unique()
-  df_notbest <- df_in %>% 
-    mutate(sideRank = NA) %>% 
-    select(-clust_unique) %>% 
-    mutate(clust_unique = NA) %>%
-    unique()
-  df_all <- bind_rows(df_best, df_notbest) %>% unique()
-  
-  #output
-  if (out == "data") {
-    return(df_all)
-  } else if (out == "best") {
-    return(df_best)
-  } else if (out == "notbest") {
-    return(df_notbest)
-  } else {
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>%
-      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor,
-                color="shell", opacity=0.15,
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_best %>% filter(fadenotbest == 1), x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="Best Probability",
-                text = ~paste('Gene:', olfrname,
-                              '<br>C_size_rank:', clustsizerank,
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, color = "red", line = list(color = 'black', width = 0.5))) %>%
-      add_trace(data=df_best %>% filter(fadenotbest == 0), x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="High Probability",  opacity=0.6,
-                text = ~paste('Gene:', olfrname,
-                              '<br>C_size_rank:', clustsizerank,
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, color = "orange", line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } #endif
-} #end DorsalML
-
-#given a list of Olfr names, output 1 medial and 1 lateral cluster for each name
-ListDorML <- function(x, by, out = "plot", title = NA, verboseset = T) {
-  #use a list to build a df of unknown size instead of bind_row each iteration
-  list_out <- vector("list", length = length(x))
-  for (i in 1:length(x)) {
-    list_out[[i]] <- DorsalML(x[i], topBy = by, out = "best", verbose = verboseset)
-  } #endfori
-  
-  #always need notbest for the shape shell1
-  notbest <- DorsalML(x[1], out = "notbest")
-  df_out <- bind_rows(list_out)
-  
-  #output
-  if (out == "data") {
-    return(df_out)
-  } else if (out == "point") {
-    df_point <- df_out %>% filter(p50 == clustmaxp)
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_point, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } else {
-    p <- plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=notbest, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_p50:', clustmeanp,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique),
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=df_out, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-    return(p)
-  } #endif
-} #end ListDorML
 
 
 # Call Cluster on relevant (gene family, OEDV) OB positions
@@ -1198,7 +771,7 @@ info <- read_csv("~/Desktop/info_210430.csv")
 symline <- read_csv("~/Desktop/obmap/r_analysis/data/3dimOB/model/symline_3rep.csv") %>%
   mutate(mlvals9 = mlvals*0.9, mlvals8 = mlvals*0.8, mlvalsX = mlvals * (1 - (apvals*0.04)))
 
-blankdata <- readRDS("~/Desktop/obmap/r_analysis/data/mri_to_R/210428_voxV4_strip25_straightMdoubled_outeronly_rescaled22dv.RDS") %>% unique()
+blankdata <- readRDS("~/Desktop/obmap/r_analysis/data/mri_to_R/210428_voxV4_strip25_straightMdoubled_outeronly_rescaled22dv.RDS") %>% unique() %>% mutate(catname = paste(AntPos, MedLat, VenDor, sep = "-"))
 
 filterORs <- readRDS("~/Desktop/heatmaps/filterORs_ompdv22no1315_uni2_ect4_below1mingt_zer0.RDS")
 
@@ -1233,7 +806,7 @@ testORs <- kzY %>%
 
 kzYprep <- kzY %>%
   left_join(testORs, by = "name") %>% 
-  #filter(rep %in% c(8,9,6)) %>%
+  filter(rep < 14) %>%
   filter(name != "M9S23") %>%
   filter(name != "M14S23") %>%
   arrange(rep, slice)
@@ -1464,7 +1037,7 @@ ranked <- tidy_result %>%
 
 # load save model output, no longer saving tidyresults
 ```{r, eval=F}
-saveRDS(ranked, "~/Desktop/obmap/r_analysis/data/3dimOB/model/aaa_dr1_dimweight.RDS")
+saveRDS(ranked, "~/Desktop/obmap/r_analysis/data/3dimOB/model/x_nodr3_dimweight.RDS")
 ```
 
 
@@ -1512,11 +1085,422 @@ nrow(ranked) == (nrow(ranked_MD) + nrow(ranked_MV) + nrow(ranked_LD) + nrow(rank
 PredGloms("Olfr881", symconstrain = T, symline = T,  title = "Olfr881 - PredGloms50")
 PredGloms("Olfr1377", symconstrain = T, symline = T,  title = "Olfr1377 - PredGloms50")
 PredGloms("Olfr16", symconstrain = T, symline = T,  title = "Olfr16/MOR23 - PredGloms50")
-PredGloms("Olfr17", symconstrain = T, symline = F,  title = "Olfr17/P2 - PredGloms50")
+PredGloms("Olfr17", symconstrain = T, symline = T,  title = "Olfr17/P2 - PredGloms50")
 PredGloms("Olfr15", symconstrain = T, symline = T,  title = "Olfr15/MOR256-17 - PredGloms50")
 PredGloms("Olfr160", symconstrain = T, symline = T,  title = "Olfr160/M72 - PredGloms50")
 PredGloms("Olfr155", symconstrain = T,  title = "Olfr155/MOR37a - PredGloms50")
 PredGloms("Olfr1507", symconstrain = T, symline = T,  title = "Olfr1507/MOR28 - PredGloms50")
+```
+
+
+# compare ORs in mombaerts paper
+
+```{r}
+fp1 <- PredGloms("Olfr881", symconstrain = T, symline = T,  out = "data")
+fp2 <- PredGloms("Olfr1377", symconstrain = T, symline = T,  out = "data")
+fp3 <- PredGloms("Olfr16", symconstrain = T, symline = T,  out = "data")
+fp4 <- PredGloms("Olfr17", symconstrain = T, symline = T,  out = "data")
+fp5 <- PredGloms("Olfr15", symconstrain = T, symline = F,  out = "data")
+fp6 <- PredGloms("Olfr160", symconstrain = T, symline = T,  out = "data")
+fp7 <- PredGloms("Olfr155", symconstrain = T,  out = "data")
+fp8 <- PredGloms("Olfr1507", symconstrain = T, symline = T,  out = "data")
+
+filter_preds <- bind_rows(fp1, fp2, fp3, fp4, fp5, fp6, fp7, fp8)
+```
+
+
+```{r}
+allORs <- ranked %>% 
+  select(olfrname) %>% 
+  unique() %>% 
+  filter(str_detect(olfrname, "Olfr")) %>% 
+  pull(olfrname) 
+
+allORs <- allORs[1:967]
+
+doall <- PredList(allORs, verboseTF = T, out = "data")
+```
+
+
+```{r}
+#did 210321 pick on a voxV3 model, may need to repick or check that all coordinates exist in voxV4B
+mom_pick <- read_csv("~/Desktop/obmap/r_analysis/data/3dimOB/analysis/Mombcomp_picalign_coords.csv") %>% filter(model == 210321)
+
+# Do two integer sequences (given max and min of sequences) intersect?
+Overlap <- function(a, b, c, d) {
+  set1 <- a:b
+  set2 <- c:d
+  if (length(intersect(set1, set2)) > 0) {
+    return(T)
+  } else if (length(intersect(set1, set2)) == 0) {
+    return(F)
+  } else {
+    return(NA)
+  } #endif
+} #end Overlap
+
+#as matrix
+mom_names <- c("olfrname", "side", 
+               "bestAP.pred", "bestAP.pick", 
+               "bestAPdist",
+               "minAP.pred", "maxAP.pred", 
+               "minAP.pick", "maxAP.pick", 
+               "btwnAP.point", "ovlpAP.clust",
+               "meanAP.pred", "meanAP.pick",
+               "bestVD.pred", "bestVD.pick", 
+               "bestVDdist",
+               "minVD.pred", "maxVD.pred", 
+               "minVD.pick", "maxVD.pick", 
+               "btwnVD.point", "ovlpVD.clust",
+               "meanVD.pred", "meanVD.pick",
+               "bestML.pred", "bestML.pick", 
+               "bestMLdist",
+               "minML.pred", "maxML.pred", 
+               "minML.pick", "maxML.pick", 
+               "btwnML.point", "ovlpML.clust", 
+               "meanML.pred", "meanML.pick",
+               "sum_dist", "dist_3d",
+               "min_p2p", "mean_p2p", "max_p2p")
+mom_mtx <- matrix(nrow = nrow(mom_pick), ncol = length(mom_names))
+
+#between is pred.best between pick.min, pick.max
+#overlap is pred.min, pred.max overlaps with pick.min, pick.max
+for (i in 1:nrow(mom_pick)) {
+  mom_clust <- filter_preds %>%
+    filter(olfrname == mom_pick$olfrname[i]) %>%
+    filter(str_detect(side, mom_pick$side[i]))
+  mom_point <- mom_clust %>%
+    filter(clustmaxp == p50)
+  best_pick <- c(mom_pick$bestAP[i], mom_pick$bestVD[i], mom_pick$bestML[i])
+  
+  pick_grid <- expand.grid(mom_pick$minAP[i]:mom_pick$maxAP[i], 
+                           mom_pick$minML[i]:mom_pick$maxML[i],
+                           mom_pick$minVD[i]:mom_pick$maxVD[i])
+  colnames(pick_grid) <- c("AntPos", "MedLat", "VenDor")
+  pg2 <- pick_grid %>% 
+    as_tibble() %>%
+    mutate(batname = paste(AntPos, MedLat, VenDor, sep = "-")) %>% 
+    filter(batname %in% blankdata$catname)
+  raffe <- NA
+  for (j in 1:nrow(mom_clust)) {
+    for (k in 1:nrow(pg2)) {
+      raffe <- c(raffe, Dist3d(mom_clust, pg2, j, k))
+    } #endfork
+  } #endforj
+  
+  if (nrow(mom_point > 0)) {
+    mom_vec <- c(mom_pick$olfrname[i], 
+                 mom_pick$side[i], 
+                 mom_point$AntPos, best_pick[1], 
+                 abs(mom_point$AntPos - best_pick[1]),
+                 min(mom_clust$AntPos), max(mom_clust$AntPos), 
+                 mom_pick$minAP[i], mom_pick$maxAP[i],
+                 between(mom_point$AntPos, mom_pick$minAP[i], mom_pick$maxAP[i]),
+                 Overlap(mom_pick$minAP[i], mom_pick$maxAP[i], 
+                         min(mom_clust$AntPos), max(mom_clust$AntPos)), 
+                 mean(mom_clust$AntPos), mean(mom_pick$minAP[i], mom_pick$maxAP[i]),
+                 mom_point$VenDor, best_pick[2], 
+                 abs(mom_point$VenDor - best_pick[2]),
+                 min(mom_clust$VenDor), max(mom_clust$VenDor),
+                 mom_pick$minVD[i], mom_pick$maxVD[i],
+                 between(mom_point$VenDor, mom_pick$minVD[i], mom_pick$maxVD[i]),
+                 Overlap(mom_pick$minVD[i], mom_pick$maxVD[i], 
+                         min(mom_clust$VenDor), max(mom_clust$VenDor)), 
+                 mean(mom_clust$VenDor), mean(mom_pick$minVD[i], mom_pick$maxVD[i]),
+                 mom_point$MedLat, best_pick[3],
+                 abs(mom_point$MedLat - best_pick[3]),
+                 min(mom_clust$MedLat), max(mom_clust$MedLat),
+                 mom_pick$minML[i], mom_pick$maxML[i],
+                 between(mom_point$MedLat, mom_pick$minML[i], mom_pick$maxML[i]),
+                 Overlap(mom_pick$minML[i], mom_pick$maxML[i], 
+                         min(mom_clust$MedLat), max(mom_clust$MedLat)),
+                 mean(mom_clust$MedLat), mean(mom_pick$minML[i], mom_pick$maxML[i]),
+                 sum(abs(mom_point$AntPos - best_pick[1]),
+                     abs(mom_point$VenDor - best_pick[2]),
+                     abs(mom_point$MedLat - best_pick[3])),
+                 sqrt((mom_point$AntPos - best_pick[1])^2 +
+                  (mom_point$MedLat - best_pick[2])^2 + 
+                  (mom_point$VenDor - best_pick[3])^2),
+                 min(raffe, na.rm = T),
+                 mean(raffe, na.rm = T),
+                 max(raffe, na.rm=T))
+  } else {
+    mom_vec <- c(mom_pick$olfrname[i], mom_pick$side[i], rep(NA, length(mom_names)-2))
+  } #endif
+  mom_mtx[i,] <- mom_vec
+} #endfori
+colnames(mom_mtx) <- mom_names
+
+mom_tib <- as_tibble(mom_mtx) %>% unique() 
+mom_tib$bestAP.pred %<>% as.numeric
+mom_tib$bestAP.pick %<>% as.numeric
+mom_tib$bestAPdist %<>% as.numeric
+mom_tib$minAP.pred %<>% as.numeric
+mom_tib$maxAP.pred %<>% as.numeric
+mom_tib$minAP.pick %<>% as.numeric
+mom_tib$maxAP.pick %<>% as.numeric
+mom_tib$btwnAP.point %<>% as.logical
+mom_tib$ovlpAP.clust %<>% as.logical
+mom_tib$meanAP.pred %<>% as.numeric
+mom_tib$meanAP.pick %<>% as.numeric
+mom_tib$bestVD.pred %<>% as.numeric
+mom_tib$bestVD.pick %<>% as.numeric
+mom_tib$bestVDdist %<>% as.numeric
+mom_tib$minVD.pred %<>% as.numeric
+mom_tib$maxVD.pred %<>% as.numeric
+mom_tib$minVD.pick %<>% as.numeric
+mom_tib$maxVD.pick %<>% as.numeric
+mom_tib$btwnVD.point %<>% as.logical
+mom_tib$ovlpVD.clust %<>% as.logical
+mom_tib$meanVD.pred %<>% as.numeric
+mom_tib$meanVD.pick %<>% as.numeric
+mom_tib$bestML.pred %<>% as.numeric
+mom_tib$bestML.pick %<>% as.numeric
+mom_tib$bestMLdist %<>% as.numeric
+mom_tib$minML.pred %<>% as.numeric
+mom_tib$maxML.pred %<>% as.numeric
+mom_tib$minML.pick %<>% as.numeric
+mom_tib$maxML.pick %<>% as.numeric
+mom_tib$btwnML.point %<>% as.logical
+mom_tib$ovlpML.clust %<>% as.logical
+mom_tib$meanML.pred %<>% as.numeric
+mom_tib$meanML.pick %<>% as.numeric
+mom_tib$sum_dist %<>% as.numeric
+mom_tib$dist_3d %<>% as.numeric
+mom_tib$min_p2p %<>% as.numeric
+mom_tib$mean_p2p %<>% as.numeric
+mom_tib$max_p2p %<>% as.numeric
+
+mom_score <- mom_tib %>%
+  rowwise() %>%
+  mutate(mean_dist = sum(abs(meanAP.pred - meanAP.pick), 
+                         abs(meanVD.pred - meanVD.pick),
+                         abs(meanML.pred - meanML.pick))) %>%
+  ungroup() %>%
+  mutate(btwn_score = btwnAP.point + btwnVD.point + btwnML.point,
+         ovlp_score = ovlpAP.clust + ovlpVD.clust + ovlpML.clust,
+         which_btwn = paste(ifelse(btwnAP.point == T, "AP", "X"),
+                            ifelse(btwnVD.point == T, "VD", "X"),
+                            ifelse(btwnML.point == T, "ML", "X"), sep = "-"),
+         which_ovlp =paste(ifelse(ovlpAP.clust == T, "AP", "X"),
+                           ifelse(ovlpVD.clust == T, "VD", "X"),
+                           ifelse(ovlpML.clust == T, "ML", "X"), sep = "-")) %>%
+  select(olfrname, side, btwn_score:which_ovlp, sum_dist, mean_dist, everything()) %>%
+  filter(!is.na(minAP.pred)) %>%
+  arrange(desc(ovlp_score))
+
+cat("Between Score Total:", sum(mom_score$btwn_score), "\n",
+    "Overlap Score Total:", sum(mom_score$ovlp_score), "\n",
+    "Sum of Distances:", sum(mom_score$sum_dist), "\n",
+    "Mean of Distances:", mean(mom_score$sum_dist))
+#c | between=11, overlap=16, tdist=147.5, mdist=12.292
+#d | between=12, overlap=14, tdist=155.5, mdist=12.958
+#d2 | between=12, overlap=15, tdist=157.5, mdist=13.125
+#210404_vox4B_dtvt_OConly no Olfr160 | 20,22,128,10.67
+#210518 21,24,83,7.55
+
+#look at the whole dataset
+mom_score %>%
+  gather(key = "dim", value = "distance", bestAPdist, bestMLdist, bestVDdist) %>%
+  select(dim, distance) %>%
+  group_by(dim) %>%
+  mutate(meandist = mean(distance),
+         mediandist = median(distance),
+         stdevdist = sd(distance),
+         meanUPsd = meandist + stdevdist,
+         meanDOWNsd = meandist - stdevdist) %>%
+  ggplot(aes(distance)) + 
+  geom_dotplot() + 
+  geom_density() + 
+  geom_vline(aes(xintercept = meandist, color = "Mean"), size = 2) +
+  geom_vline(aes(xintercept = mediandist, color = "Median")) +
+  geom_vline(aes(xintercept = meanUPsd, color = "Mean+SD")) +
+  geom_vline(aes(xintercept = meanDOWNsd, color = "Mean-SD")) +
+  facet_wrap(~ dim, nrow = 3, ncol = 1) + 
+  theme(legend.position = "bottom") +
+  ggtitle("DorsalML best predictions VS Momb5OR picked positions", subtitle = "New model - Vox4B, Olfr160 removed")
+
+
+#look at each glom
+Compare_momb_pickpred <- function(mom_dat) {
+  mom_plots <- vector(mode = "list", length = nrow(mom_dat))
+  for (i in 1:nrow(mom_dat)) {
+    mom_vis <- mom_dat %>% 
+      filter(olfrname == mom_dat$olfrname[i]) %>% 
+      filter(side == mom_dat$side[i]) %>% 
+      select(olfrname, side, bestAP.pred:maxAP.pick, 
+             bestML.pred:maxML.pick, bestVD.pred:maxVD.pick) %>% 
+      select(-bestAPdist, -bestMLdist, -bestVDdist) %>% 
+      pivot_longer(cols = c(contains(".pred"), contains(".pick")),
+                   names_to = "pick_or_pred",
+                   values_to = "value") %>%
+      mutate(pick.pred = ifelse(str_detect(pick_or_pred, "pick"), 
+                                "Picked", ifelse(str_detect(pick_or_pred, "pred"), 
+                                                 "Predicted", NA))) %>%
+      mutate(dim = ifelse(str_detect(pick_or_pred, "AP"), 
+                          "AntPos", ifelse(str_detect(pick_or_pred, "ML"), 
+                                           "MedLat", ifelse(str_detect(pick_or_pred, "VD"), 
+                                                            "VenDor", NA)))) %>% 
+      mutate(min.max = ifelse(str_detect(pick_or_pred, "max"), 
+                              "Max", ifelse(str_detect(pick_or_pred, "min"), 
+                                            "Min", "Best"))) %>% 
+      select(-pick_or_pred) %>% 
+      pivot_wider(names_from = min.max, values_from = value)
+    
+    mom_tit <- paste(mom_dat$olfrname[i], mom_dat$side[i])
+    mom_subtit <- paste("Distance: ", mom_dat$sum_dist[i],
+                        "  Between Score:", mom_dat$btwn_score[i], mom_dat$which_btwn[i],
+                        "  Overlap Score:", mom_dat$ovlp_score[i], mom_dat$which_ovlp[i])
+    
+    mom_plots[[i]] <- ggplot(mom_vis) + 
+      geom_pointrange(aes(x=dim, y=Best, color=pick.pred, 
+                          ymin=Min, ymax=Max, group=pick.pred), 
+                      position=position_dodge(width = 0.25)) +
+      ggtitle(mom_tit, subtitle = mom_subtit) +
+      xlab("Position") +
+      ylab("Dimension") +
+      theme(legend.position = "bottom")
+  } #endfori
+  if (i == nrow(mom_dat)) {
+    return(mom_plots)
+  } #endif
+} #end func
+
+momcomp_plots <- Compare_momb_pickpred(mom_score)
+momcomp_plots[[1]]
+
+CheckMC <- function(olfr, xside) {
+  mom_clust <- filter_preds %>%
+    filter(olfrname == olfr) %>%
+    filter(str_detect(side, xside))
+  mom_click <- mom_pick %>%
+    filter(olfrname == olfr) %>%
+    filter(str_detect(side, xside))
+  
+  click_grid <- expand.grid(mom_click$minAP[1]:mom_click$maxAP[1], 
+                           mom_click$minML[1]:mom_click$maxML[1],
+                           mom_click$minVD[1]:mom_click$maxVD[1])
+  colnames(click_grid) <- c("AntPos", "MedLat", "VenDor")
+  pg2 <- click_grid %>% 
+    as_tibble() %>%
+    mutate(batname = paste(AntPos, MedLat, VenDor, sep = "-")) %>% 
+    filter(batname %in% blankdata$catname)
+  
+  p <- plot_ly(type = "scatter3d", mode = "markers") %>%
+      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor,
+                color="shell", opacity=0.1,
+                marker = list(size = 5, color = "grey")) %>%
+      add_trace(data=mom_clust, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="Prediction",
+                marker = list(size = 6, color = "red", 
+                              line = list(color = 'black', width = 0.5))) %>%
+      add_trace(data=pg2, x=~AntPos, y=~MedLat, z=~VenDor, 
+                color="Picked",  opacity=0.6,
+                marker = list(size = 6, color = "orange", 
+                              line = list(color = 'black', width = 0.5))) %>%
+      layout(title = title,
+             scene = list(xaxis = list(title = 'Anterior-Posterior'),
+                          yaxis = list(title = 'Medial-Lateral'),
+                          zaxis = list(title = 'Ventral-Dorsal')))
+  return(p)
+}  
+
+
+ggplot(mom_score, aes(side, min_p2p * 100, label = olfrname)) + 
+  geom_jitter(width = 0.1, height = 0) + 
+  geom_text_repel() + labs(x = "OB Side", y ="3D distance (um)")
+
+
+ggplot(mom_score, aes(side, min_p2p * 100)) + 
+  geom_jitter(width = 0.1, height = 0) +  labs(x = "OB Side", y ="3D distance (um)")
+
+
+ggplot(mom_score, aes(side, min_p2p * 100)) + 
+  geom_boxplot()
+
+CheckMC("Olfr881", "Lat")
+
+#given a mompick glom, check its DVU zone, compare its distance to X many random ORs from the same DVU zone and OB side, output individual distances or mean distances per mompick
+RandomMC <- function(input_preds, randX) {
+  randmtx <- matrix(nrow = randX*nrow(mom_pick), ncol = 7)
+  mtxcounter <- 1
+  for (i in 1:nrow(mom_pick)) {
+    dvuX <- DVinfo %>% filter(olfrname == mom_pick$olfrname[i]) %>% pull(DVdiscord)
+    
+    viable <- input_preds %>% 
+      filter(pgStatus == dvuX) %>% 
+      filter(side == mom_pick$side[i]) %>% 
+      filter(olfrname != mom_pick$olfrname[i])
+    rlist <- viable %>% 
+      select(olfrname) %>% 
+      unique() %>% 
+      pull(olfrname)
+    
+    if (dvuX == "Unusual") {
+      samlist <- sample(rlist, 15)
+    } else {
+      samlist <- sample(rlist, randX)
+    } #endif
+    
+    pick_grid <- expand.grid(mom_pick$minAP[i]:mom_pick$maxAP[i], 
+                             mom_pick$minML[i]:mom_pick$maxML[i],
+                             mom_pick$minVD[i]:mom_pick$maxVD[i])
+    colnames(pick_grid) <- c("AntPos", "MedLat", "VenDor")
+    pg2 <- pick_grid %>% 
+      as_tibble() %>%
+      mutate(batname = paste(AntPos, MedLat, VenDor, sep = "-")) %>% 
+      filter(batname %in% blankdata$catname)
+    for (q in 1:length(samlist)) {
+      sam_clust <- input_preds %>% 
+        filter(olfrname == samlist[q]) %>%
+        filter(side == mom_pick$side[i])
+      raffe <- NA
+      for (r in 1:nrow(sam_clust)) {
+        for (s in 1:nrow(pg2)) {
+          raffe <- c(raffe, Dist3d(sam_clust, pg2, r, s))
+        } #endforr
+      } #endfors
+      min_r2p <- min(raffe, na.rm=T)
+      mean_r2p <- mean(raffe, na.rm=T)
+      max_r2p <- max(raffe, na.rm=T)
+      
+      randvec <- c(mom_pick$olfrname[i], mom_pick$side[i], 
+                   sam_clust$olfrname[1], sam_clust$side[1],
+                   min_r2p, mean_r2p, max_r2p)
+      randmtx[mtxcounter,] <- randvec 
+      mtxcounter <- mtxcounter + 1
+    } #endforq
+  } #endfori
+  colnames(randmtx) <- c("olfrnamePick", "sidePick", "olfrnameRand", "sideRand",
+                         "min_r2p", "mean_r2p", "max_r2p")
+  randtb <- as_tibble(randmtx) %>% drop_na()
+  randtb$min_r2p %<>% as.numeric
+  randtb$mean_r2p %<>% as.numeric
+  randtb$max_r2p %<>% as.numeric
+  return(randtb)
+} #end RandomMC
+
+real <- mom_score %>% select(olfrname, side, min_p2p)
+randtest <- RandomMC(doall, 100)
+rand1 <- randtest %>% 
+  group_by(olfrnamePick, sidePick) %>%
+  summarise(min_p2p = mean(min_r2p)) %>%
+  rename(olfrname = olfrnamePick,
+         side = sidePick) %>%
+  left_join(real, by = c("olfrname", "side")) %>%
+  pivot_longer(names_to = "from", values_to = "distance",
+               cols = c(min_p2p.x, min_p2p.y)) %>%
+  mutate(refrom = ifelse(str_detect(from, "x"), "Random", "Predicted"))
+
+randvactual_legend <- ggplot(rand1, aes(side, distance, color = refrom)) + 
+  geom_boxplot() +
+  geom_point(position = position_dodge(width = 0.75)) +
+  scale_color_manual(values = c("#ff0000","#010000")) +
+  labs(x = "Glomerulus Zone", y = "Distance (100µm Voxels)") +
+  theme_bw() +
+  theme_kz()
+
+randvactual <- randvactual_legend + theme(legend.position = "none")  
 ```
 
 
@@ -1589,241 +1573,3 @@ pgviodat <- pgall %>%
   add_row(gene = "Taar4", meanAP = 12, meanVD = 22, meanML = 14, sortrank = 95)
 ```
 
-
-### LEGACY----------------------------------------------------------------------
-# 3D plots of OR probability as selected and constrained using my own functions
-## Plot X best voxels for an OR as ranked by SNR
-Each voxel holds a probability for every OR, as determined by the expression of that ORs in the dimensional slices that intersect at that voxel. The total of the probability for all ORs in a voxel sums to 1. 
-SNR is signal-to-noise ratio, essentially how much does an individual voxel stand out from the average probability of its 3 dimensional slices (all voxels at that single dimension position).
-Idea was to eliminate ectopics whose high expression across the whole OB dominated the voxel probability for nearly all voxels.
-72 is ~2.5% of total voxel positions and presents a robust visualization, meaning that increasing this number typically results in adding neighboring voxels.
-```{r eval=F}
-Scat_rank("Olfr1377", 1000, title = "Olfr1377 - Top 72 SnR voxels")
-
-
-## Plot best X voxels based on raw p50 (probability)
-#Using raw probability here, its pretty much the same as SNR after removing ectopics.
-
-#ranked %>% filter(olfrname == "Olfr160") %>% filter(MedLat < 3) %>% arrange(desc(p50)) %>% select(voxrankperOR, AntPos:VenDor)
-
-p50plot("Olfr1377", 72, title = "Olfr1377 - Top 72 probability voxels")
-
-
-## Clustering top ranked points
-#Given a number of top probability ranked points, cluster spatial neighbors.
-Cluster("Olfr1377", 1000, minClustSize = 2, out = "plot", title = "Olfr1377 - Clustered top 100 probability voxels")
-
-## Pick the best Medial and Lateral cluster 
-#Plot best Medial and best Lateral cluster from the set of clusters across a symmetry line that is calculated using single dimension heatmap data
-#For clarity, it is not picking the 2 best clusters but the best cluster from the medial half and the best cluster from the lateral half.
-BestML("Olfr1377", clustersPerHalfBulb = 1, title = "Olfr1377 - Highest Probability Medial and Lateral Cluster")
-
-ListDorML(c("Olfr881", "Olfr1377"), by = 50, out = "point", title = "mKate2-ORs")
-ListDorML(c("Olfr881", "Olfr1377"), by = 50, title = "mKate2-ORs")
-
-# features from intro, moved here for simplicity during making of many models
-#symline visualization
-ggplot() +
-  geom_blank() +
-  geom_abline(aes(slope = 0.32655, intercept = 7.61119, color = "rep1")) +
-  geom_abline(aes(slope = 0.24922, intercept = 8.83890, color = "rep2")) +
-  geom_abline(aes(slope = 0.287885, intercept = 8.225045, color = "mean")) +
-  xlim(0,23) +
-  ylim(0,22) + 
-  ggtitle("Glomeruli symmetry line as calculated by single dimension heatmap peaks") +
-  xlab("Mean position of top 2 AP peaks") +
-  ylab("Mean position of top 2 ML peaks")
-
-#blankOB colored by DV position on a black background, see title slide of 2020 presentations
-dvml_blank <- blankdata %>%
-  mutate(dimdv = ifelse(VenDor >= 13, 
-                        "Dorsal", 
-                        "Ventral"),
-         dimml = ifelse(MedLat > 17, 
-                        "Lateral",
-                        ifelse(MedLat < 5,
-                               "Medial",
-                               NA)),
-         dim = ifelse(is.na(dimml), dimdv, dimml)) %>%
-  rowwise() %>%
-  mutate(symdim = ifelse(MedLat == round(symline$mlvals[which(symline$apvals == AntPos)]),"SymLine", dim)) %>%
-  ungroup()
-
-#blankOB
-plot_ly(dvml_blank, x = ~MedLat, y = ~AntPos, z = ~VenDor, color = ~VenDor, 
-        text = ~paste('Dim: ', dim,
-                      '<br>AP:', AntPos, 
-                      '<br>ML:', MedLat,
-                      '<br>VD:', VenDor),
-        marker = list(size = 8, symbol = "circle"),
-        type = 'scatter3d',
-        mode = 'markers',
-        hoverinfo = "none",
-        hovertext="none") %>%
-  layout(scene = list(xaxis = list(title = 'Medial-Lateral',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255"),
-                      yaxis = list(title = 'Anterior-Posterior',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255)"),
-                      zaxis = list(title = 'Ventral-Dorsal',
-                                   backgroundcolor="rgb(200, 200, 230",
-                                   gridcolor="rgb(255,255,255)",
-                                   showbackground=TRUE,
-                                   zerolinecolor="rgb(255,255,255)")))
-
-#rankedolfr is a tidy_result ranked tibble using all intact olfr tpm
-#rankedchemo is a tidy_result ranked tibble using all intact chemosensory gene tpm
-#orbyorcor <- tibble(olfrname = ranked_olfr2$olfrname, orp50 = ranked_olfr2$p50, chemp50 = ranked_chemORs$p50) %>% group_by(olfrname) %>% summarise(cor = cor(orp50, chemp50)) %>% left_join(info, by = "olfrname")
-#orXor_cor <- read_csv("~/Desktop/obmap/r_analysis/3dimOB/output/chemoVolfr_p50.csv")
-#ggplot(orXor_cor) + geom_violin(aes(oe_region, cor)) + 
-#  ggtitle("150iter, using all Chemo does not significantly alter voxel probability rankings")
-```
-
-# Find gloms for all ORs and get brief statistics
-```{r, eval=F}
-allORs <- ranked %>% select(olfrname) %>% unique() %>% pull()
-
-allDors <- ListDorML(allORs, by = 50, out = "data")
-saveRDS(allDors, "~/Desktop/obmap/r_analysis/data/3dimOB/model/210430_ad50_hmORs_omprepweights.RDS")
-```
-
-
-```{r}
-ranked <- readRDS("~/Desktop/obmap/r_analysis/data/3dimOB/model/210429_vox4B_rk_hmORs_omprepweights.RDS")
-allDors <- readRDS("~/Desktop/obmap/r_analysis/data/3dimOB/model/210430_ad50_hmORs_omprepweights.RDS")
-allDorpoint <- allDors %>% 
-  filter(p50 == clustmaxp) %>%
-  filter(olfrname != "Olfr3_3_18")
-
-#how many uniquely positioned voxels? duplicated 
-allDorpoint %>% 
-  select(AntPos:VenDor) %>% 
-  unique() %>%
-  nrow()
-
-#how many in ML1
-allDorpoint %>% 
-  filter(MedLat == 1) %>%
-  nrow()
-
-#how many in ML1 are unique?
-allDorpoint %>% 
-  filter(MedLat == 1) %>%
-  select(AntPos:VenDor) %>%
-  unique() %>%
-  nrow()
-
-#how many in VD1
-allDorpoint %>% 
-  filter(VenDor == 1) %>%
-  nrow()
-
-#1/voxProp: 1151,509,213,65
-#voxProp/dimTotal: 1115,77,59,77
-#dimTotal/voxProp: 1162,483,220,86
-#V4Adtvt: 1111,537,234,88
-#V4Bdtvt: 1198,169,122,64 looks v good
-#V4BompA: 1050.516,215,35
-#V4BomprepHMors: 1081,329,179,132
-
-#how many predictions per slice per dim, also for unique
-ad_ap <- allDorpoint %>% count(AntPos) %>% rename("slice" = "AntPos") %>% mutate(dim = "AntPos", type = "all")
-ad_apu <- allDorpoint %>% select(AntPos:VenDor) %>% unique() %>% count(AntPos) %>% rename("slice" = "AntPos") %>% mutate(dim = "AntPos", type = "unique")
-
-ad_ml <- allDorpoint %>% count(MedLat) %>% rename("slice" = "MedLat") %>% mutate(dim = "MedLat", type = "all")
-ad_mlu <- allDorpoint %>% select(AntPos:VenDor) %>% unique() %>% count(MedLat) %>% rename("slice" = "MedLat") %>% mutate(dim = "MedLat", type = "unique")
-
-ad_vd <- allDorpoint %>% count(VenDor) %>% rename("slice" = "VenDor") %>% mutate(dim = "VenDor", type = "all")
-ad_vdu <- allDorpoint %>% select(AntPos:VenDor) %>% unique() %>% count(VenDor) %>% rename("slice" = "VenDor") %>% mutate(dim = "VenDor", type = "unique")
-
-ad_dimwise <- bind_rows(ad_ap, ad_apu) %>%
-  bind_rows(ad_ml) %>%
-  bind_rows(ad_mlu) %>%
-  bind_rows(ad_vd) %>%
-  bind_rows(ad_vdu)
-
-ad_dimwise %>%
-  ggplot() +
-  geom_line(aes(slice, n, color = type)) + 
-  facet_wrap(~ dim) +
-  ggtitle("DorsalML prediction positions by dim") +
-  theme(legend.position = "bottom")
-
-#cursory analysis
-allDorpoint %>% filter(!is.na(class)) %>% ggplot() + geom_violin(aes(as_factor(class), VenDor, fill = as_factor(class)))
-
-allDorpoint %>% filter(!is.na(oe_region)) %>% ggplot() + geom_violin(aes(as_factor(oe_region), VenDor, fill = as_factor(oe_region)))
-
-allDorpoint %>% filter(!is.na(fisurface)) %>% ggplot() + geom_violin(aes(as_factor(fisurface), VenDor, fill = as_factor(fisurface)))
-
-allDorpoint %>% filter(!is.na(tz_vd)) %>% ggplot() + geom_violin(aes(as_factor(tz_vd), VenDor, fill = as_factor(tz_vd)))
-
-allDorpoint %>% filter(!is.na(RTP)) %>% ggplot() + geom_violin(aes(as_factor(RTP), VenDor, fill = as_factor(RTP)))
-
-
-```
-
-
-## Dorsal constraint function
-```{r}
-DorsalML("Olfr881", topMin = 50, topBy = 50, title = "Olfr881 - DorsalML50")
-DorsalML("Olfr1377", topMin = 50, topBy = 50, title = "Olfr1377 - DorsalML50")
-DorsalML("Olfr16", topMin = 50, topBy = 50, title = "Olfr16/MOR23 - DorsalML50")
-DorsalML("Olfr17", topMin = 50, topBy = 50, title = "Olfr17/P2 - DorsalML50")
-DorsalML("Olfr15", topMin = 50, topBy = 50, title = "Olfr15/MOR256-17 - DorsalML50")
-DorsalML("Olfr160", topMin = 50, topBy = 50, title = "Olfr160/M72 - DorsalML50")
-DorsalML("Olfr155", topMin = 50, topBy = 50, title = "Olfr155/MOR37a - DorsalML50")
-DorsalML("Olfr1507", topMin = 50, topBy = 50, title = "Olfr1507/MOR28 - DorsalML50")
-
-#ListDorML(c("Olfr1377", "Olfr16", "Olfr17", "Olfr15", "Olfr160", "Olfr155", "Olfr1507"), by = 50, verboseset = F)
-# testOR med glom at 3,3,18 lat gloxm at 2,9,17
-```
-
-
-```{r}
-#plot all ORs, both gloms
-shellpoints <- DorsalML("Olfr299", out = "notbest")
-
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=allDorpoint, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(title = title,
-             scene = list(xaxis = list(title = 'Anterior-Posterior'),
-                          yaxis = list(title = 'Medial-Lateral'),
-                          zaxis = list(title = 'Ventral-Dorsal')))
-
-wack <- allDorpoint %>% filter(side == "Medial") %>% filter(str_detect(olfrname, "Olfr99"))
-
-plot_ly(type = "scatter3d", mode = "markers") %>% 
-      add_trace(data=blankdata, x=~AntPos, y=~MedLat, z=~VenDor, 
-                color="shell", opacity=0.15,
-                marker = list(size = 5, color = "grey")) %>%
-      add_trace(data=wack, x=~AntPos, y=~MedLat, z=~VenDor, color=~olfrname,
-                text = ~paste('Gene:', olfrname, 
-                              '<br>C_size_rank:', clustsizerank, 
-                              '<br>C_mean_ML:', meanML,
-                              '<br>C_max_p50:', clustmaxp,
-                              '<br>Cluster:', clust_unique,
-                              '<br>SideRank:', sideRank),
-                marker = list(size = 6, line = list(color = 'black', width = 0.5))) %>%
-      layout(scene = list(xaxis = list(visible = F),
-                          yaxis = list(visible = F),
-                          zaxis = list(visible = F),
-                          camera = list(eye = list(x = -1,
-                                                   y = -1,
-                                                   z = -1))))
-```

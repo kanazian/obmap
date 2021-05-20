@@ -60,7 +60,7 @@ renamed <- preptpm %>%
     select(gene_name, everything()) %>%
     unique()
 
-write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_allgenes_200817.csv")
+write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_allgenes_210421.csv")
 ```
 
 
@@ -68,24 +68,28 @@ write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_all
 ```{r, message=F, warning=F, eval=F}
 olfronly <- renamed %>%
     filter(str_detect(gene_name, "Olfr"))
-write_csv(olfronly, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_allolfrs_200817.csv")
+write_csv(olfronly, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_allolfrs_210421.csv")
 
 intactonly <- olfronly %>%
     filter(!str_detect(gene_name, "ps"))
-write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactolfrs_200817.csv")
+write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactolfrs_210421.csv")
 
 taaronly <- renamed %>%
     filter(str_detect(gene_name, "Taar")) %>%
     filter(!str_detect(gene_name, "ps"))
-write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intacttaars_200817.csv")
+write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intacttaars_210421.csv")
 
 vmnonly <- renamed %>%
     filter(str_detect(gene_name, "Vmn")) %>%
     filter(!str_detect(gene_name, "ps"))
-write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactvmn_200817.csv")
+write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactvmn_210421.csv")
 
-chemo <- bind_rows(intactonly, taaronly, vmnonly)
-write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactchemo_200817.csv")
+oldcap1markers <- c("Omp", "Taf1b", "Xist")
+oc1mark <- renamed %>%
+    filter(gene_name %in% oldcap1markers)
+
+chemo <- bind_rows(intactonly, taaronly, vmnonly, oc1mark)
+write_csv(renamed, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/samples_over_intactchemo_210421.csv")
 ```
 
 
@@ -139,43 +143,74 @@ chemoready <- new_file_divide %>%
     left_join(chemojoin, by = "X1") %>%
     rename("name" = X1)
 
-write.csv(intactready, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/output/covarintactolfrs_over_samples_200923.csv")
-write.csv(chemoready, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/output/covarintactchemo_over_samples_200923.csv")
+write.csv(intactready, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/covarintactolfrs_over_samples_210421.csv")
+write.csv(chemoready, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/covarintactchemo_over_samples_210421.csv")
 ```
 
 
 # examine chemosensory, target, and marker content across samples and dimensions
-```{r}
-covars <- read_csv("~/Desktop/obmap/r_analysis/data/3dimOB/model/allmice_covariates_trim_voxweights_v4.csv")
-covars_justcovars <- covars %>% select(name:dim)
 
-allgenes <- read_csv("~/Desktop/obmap/r_analysis/data/3dimOB/model/covarintactchemo2_over_samples_210227.csv")
+Initially I determined DTVT weights using total OR tpm but this is potentially problematic due to the fact that each OR gets a different amount of enrichment. Since each slice likely contains different OR transcripts, the total OR TPM could differ based solely on OR composition even if the number of OR transcripts is the same.  
+
+Therefore, it is better to calculate using a single gene, in this case OMP, as a marker for glomerular surface area. One issue with using OMP TPM is that OMP is enriched far more in ORCapSeq2 than ORCapSeq1 while ORs are enriched far more in ORCapSeq1 than ORCapSeq2.
+```{r}
+allgenes <- read_csv("~/Desktop/obmap/r_analysis/data/make_TPMmtx/covarintactchemo2_over_samples_210421.csv")
+
 olfr_sums <- allgenes %>% select(-Olfr287, -Olfr32) %>% select_if(str_detect(names(.), "^Olfr")) %>% rowSums()
 vmn_sums <- allgenes %>% select_if(str_detect(names(.), "^Vmn")) %>% rowSums()
 taar_sums <- allgenes %>% select_if(str_detect(names(.), "^Taar")) %>% rowSums()
+omp_sums <- allgenes %>% pull(Omp)
 
 #calculate total TPM for gene families in each sample
 gene_sum_tb <- allgenes %>%
     select(name:dimrep) %>%
     add_column(sumolfr = olfr_sums,
                sumvmn = vmn_sums,
-               sumtaar = taar_sums)
+               sumtaar = taar_sums,
+               sumomp = omp_sums)
 
-ggplot(gene_sum_tb %>% filter(!is.na(dimrep))) +
+oc_sum_tb <- gene_sum_tb %>%
+    filter(rep < 13)
+nc_sum_tb <- gene_sum_tb %>%
+    filter(rep >= 13)
+
+# total OR TPM
+ggplot(oc_sum_tb %>% filter(!is.na(dimrep))) +
     geom_line(aes(slice, sumolfr, color = as_factor(dimrep))) +
     facet_wrap(~ dim, nrow = 1, ncol = 3)
 
-ggplot(gene_sum_tb %>% filter(dim == "AntPos")) +
+ggplot(oc_sum_tb %>% filter(dim == "AntPos")) +
     geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
     ggtitle("AntPos replicates - sum of OR tpm")
 
-ggplot(gene_sum_tb %>% filter(dim == "MedLat")) +
+ggplot(oc_sum_tb %>% filter(dim == "MedLat")) +
     geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
     ggtitle("MedLat replicates - sum of OR tpm")
 
-ggplot(gene_sum_tb %>% filter(dim == "VenDor")) +
+ggplot(oc_sum_tb %>% filter(dim == "VenDor")) +
     geom_line(aes(slice, sumolfr, color = as_factor(rep))) +
     ggtitle("VenDor replicates - sum of OR tpm")
+
+# OMP TPM
+ggplot(oc_sum_tb %>% filter(!is.na(dimrep))) +
+    geom_line(aes(slice, sumomp, color = as_factor(dimrep))) +
+    facet_wrap(~ dim, nrow = 1, ncol = 3)
+
+ggplot(oc_sum_tb %>% filter(dim == "AntPos")) +
+    geom_line(aes(slice, sumomp, color = as_factor(rep))) +
+    ggtitle("AntPos replicates - sum of OMP tpm")
+
+ggplot(nc_sum_tb %>% filter(dim == "AntPos")) +
+    geom_line(aes(slice, sumomp, color = as_factor(rep))) +
+    ggtitle("AntPos replicates - sum of OMP tpm")
+
+ggplot(oc_sum_tb %>% filter(dim == "MedLat")) +
+    geom_line(aes(slice, sumomp, color = as_factor(rep))) +
+    ggtitle("MedLat replicates - sum of OMP tpm")
+
+ggplot(oc_sum_tb %>% filter(dim == "VenDor")) +
+    geom_line(aes(slice, sumomp, color = as_factor(rep))) +
+    ggtitle("VenDor replicates - sum of OMP tpm")
 
 #seems like VD14, AP13, AP15 fall outside of their groups
 #interestingly ML16 fits in well, looking at my notes I used oldCap instead of newCap for that replicate (14,15,16)
@@ -187,6 +222,33 @@ ggplot(gene_sum_tb %>% filter(dim == "AntPos")) +
     ggtitle("X replicates - sum of Taar tpm")
 
 #make normalization factors
+#normalization factors for rep are omp of slice/omp of all slices
+#normalization factors for dim are 
+norm_stats <- gene_sum_tb %>%
+    mutate(cap = ifelse(rep < 13, 1, ifelse(rep == 16, 1, 2))) %>%
+    group_by(cap, rep) %>% 
+    mutate(total_rep_omp = sum(sumomp),
+           total_rep_olfr = sum(sumolfr),
+           prop_rep_omp = sumomp/total_rep_omp,
+           prop_rep_olfr = sumolfr/total_rep_olfr) %>%
+    ungroup() %>%
+    group_by(cap, dim) %>%
+    mutate(total_dim_omp = sum(sumomp),
+           total_dim_olfr = sum(sumolfr)) %>%
+    ungroup() %>%
+    group_by(cap, dim, slice) %>%
+    mutate(prop_dim_omp = sum(sumomp)/total_dim_omp,
+           prop_dim_olfr = sum(sumolfr)/total_dim_olfr) %>%
+    ungroup()
+
+write_csv(norm_stats, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/weights_proptotal_210424.csv")
+
+norm_stats %>% mutate(test = sumolfr*prop_rep_omp) %>% ggplot() + geom_line(aes(slice, test, color = as_factor(rep))) + facet_wrap(~ dim)
+
+norm_stats %>% mutate(test = sumolfr*prop_dim_omp) %>% ggplot() + geom_line(aes(slice, test, color = as_factor(rep))) + facet_wrap(~ dim)
+
+
+#older DTVT weight stuff
 #for each slice along each dim, calculate ratio of slice TPM to both mean and total TPM of dimension
 dim_groups <- gene_sum_tb %>% 
     filter(rep < 13) %>% 
@@ -233,7 +295,9 @@ check_norms <- gene_sum_tb %>%
     mutate(rep_OR = sumolfr/rep_norms_ratio2mean,
            dim_OR = sumolfr/dim_norms_ratio2mean,
            rep_vmn = sumvmn/rep_norms_ratio2mean,
-           dim_vmn = sumvmn/dim_norms_ratio2mean)
+           dim_vmn = sumvmn/dim_norms_ratio2mean,
+           rep_omp = sumomp/rep_norms_ratio2mean,
+           dim_omp = sumomp/rep_norms_ratio2mean)
 
 #saveRDS(norm_trim, "~/Desktop/obmap/r_analysis/data/make_TPMmtx/totalORtpm_normalization_justname_210404.RDS")
 

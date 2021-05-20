@@ -556,21 +556,21 @@ OBplot(trimpost_newmed)
 # scale to AP23, ML22, VD23
 ```{r}
 #rescale OB with concave medial wall
-rescaledcc <- Rescale(trimpost_newmed, 23, 22, 23)
+rescaledcc <- Rescale(trimpost_newmed, 23, 22, 22)
 rescaledcc_out <- tibble(AntPos = rescaledcc$APint, 
                          MedLat = rescaledcc$MLint, 
                          VenDor = rescaledcc$VDint, type = "concave_medwall") %>%
   unique()
 OBplot(rescaledcc_out)
-#saveRDS(rescaledcc_out, "~/Desktop/obmap/r_analysis/mri_to_R/output/210310_cubegrid_rescaled_concaveMedial_outeronly.RDS")
+saveRDS(rescaledcc_out, "~/Desktop/obmap/r_analysis/mri_to_R/output/210428_cubegrid_rescaled_concaveMedial_outeronly.RDS")
 
 #rescale OB with straight medial wall
-rescaled <- Rescale(thicc, 23, 22, 23)
+rescaled <- Rescale(thicc, 23, 22, 22)
 rescaled_out <- tibble(AntPos = rescaled$APint, 
                          MedLat = rescaled$MLint, 
                          VenDor = rescaled$VDint, type = "straight_medwall") %>%
   unique()
 OBplot(rescaled_out)
-#saveRDS(rescaled_out, "~/Desktop/obmap/r_analysis/data/mri_to_R/210404_voxV4_strip25_straightMdoubled_outeronly_rescaled.RDS")
+saveRDS(rescaled_out, "~/Desktop/obmap/r_analysis/data/mri_to_R/210428_voxV4_strip25_straightMdoubled_outeronly_rescaled22dv.RDS")
 ```
 
