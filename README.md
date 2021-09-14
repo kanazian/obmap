@@ -5,7 +5,7 @@ Advisor: Hiro Matsunami, PhD
 
 Institution: Duke University
 
-Collaborators: Justin Silverman MD PhD, Matt Wachowiak PhD, Shawn Burton PhD, Luis Saraiva PhD, Antonio Scialdone PhD, Mayra Ruiz
+Collaborators and contributors: Justin Silverman MD PhD, Matt Wachowiak PhD, Shawn Burton PhD, Luis Saraiva PhD, Antonio Scialdone PhD, Mayra Ruiz, Maira Nagai PhD, Claire de March PhD
 
 ### Goal: 
 Determine the position of mouse olfactory receptor (OR) glomeruli
